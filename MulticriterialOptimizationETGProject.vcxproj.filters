@@ -29,7 +29,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="input.txt" />
-    <None Include="NOTATKA_ETG.md" />
     <None Include="README.md" />
   </ItemGroup>
 </Project>
