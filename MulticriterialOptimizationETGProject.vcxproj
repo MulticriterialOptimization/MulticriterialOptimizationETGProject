@@ -128,6 +128,15 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="MulticriterialOptimizationETGProject.cpp" />
+    <ClCompile Include="etg.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="etg.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="input.txt" />
+    <None Include="NOTATKA_ETG.md" />
+    <None Include="README.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

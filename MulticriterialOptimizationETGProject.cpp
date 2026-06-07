@@ -1,11 +1,23 @@
 // MulticriterialOptimizationETGProject.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
-#include <iostream>
+#include "etg.h"
 
-int main()
+#include <iostream>
+#include <string>
+
+int main(int argc, char** argv)
 {
-    std::cout << "Hello World!\n";
+    const std::string path = (argc > 1) ? argv[1] : "input.txt";
+    try {
+        const etg::ETG graph = etg::parseETG(path);
+        etg::printSummary(graph, std::cout);
+    }
+    catch (const std::exception& ex) {
+        std::cerr << "Blad: " << ex.what() << '\n';
+        return 1;
+    }
+    return 0;
 }
 
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu

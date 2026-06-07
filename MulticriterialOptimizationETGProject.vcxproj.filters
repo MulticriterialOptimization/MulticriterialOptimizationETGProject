@@ -18,5 +18,18 @@
     <ClCompile Include="MulticriterialOptimizationETGProject.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="etg.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="etg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="input.txt" />
+    <None Include="NOTATKA_ETG.md" />
+    <None Include="README.md" />
   </ItemGroup>
 </Project>
