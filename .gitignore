@@ -67,3 +67,18 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Visual Studio
+.vs/
+x64/
+x86/
+Debug/
+Release/
+*.user
+*.obj
+*.exe
+*.pdb
+*.ilk
+
+# Local tests
+etg_test

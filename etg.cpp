@@ -1,0 +1,387 @@
+#include "etg.h"
+
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <stdexcept>
+
+namespace {
+
+void rstrip(std::string& s) {
+    while (!s.empty() && (s.back() == '\r' || s.back() == '\n' ||
+                          s.back() == ' ' || s.back() == '\t'))
+        s.pop_back();
+}
+
+std::vector<int> parseInts(const std::string& line) {
+    std::vector<int> v;
+    std::istringstream iss(line);
+    int x;
+    while (iss >> x) v.push_back(x);
+    return v;
+}
+
+etg::Edge parseEdge(const std::string& tok) {
+    const std::size_t open = tok.find('(');
+    const std::size_t close = tok.find(')');
+    etg::Edge e;
+    if (open == std::string::npos) {
+        e.to = std::stoi(tok);
+        return e;
+    }
+    e.to = std::stoi(tok.substr(0, open));
+    if (close != std::string::npos && close > open + 1)
+        e.data = std::stoi(tok.substr(open + 1, close - open - 1));
+    return e;
+}
+
+}
+
+namespace etg {
+
+ETG parseETG(const std::string& path) {
+    std::ifstream in(path);
+    if (!in) throw std::runtime_error("Cannot open a file: " + path);
+
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(in, line)) { rstrip(line); lines.push_back(line); }
+
+    ETG g;
+    bool foundTasks = false, foundProc = false, foundTimes = false, foundCost = false;
+    std::vector<std::string> typeLines;
+    std::size_t i = 0;
+    while (i < lines.size()) {
+        if (lines[i].empty()) { ++i; continue; }
+
+        std::istringstream header(lines[i]);
+        std::string tag;
+        header >> tag;
+
+        if (tag == "@tasks") {
+            foundTasks = true;
+            header >> g.numTasks;
+            ++i;
+            g.tasks.resize(g.numTasks);
+            for (int t = 0; t < g.numTasks && i < lines.size(); ++t, ++i) {
+                std::istringstream iss(lines[i]);
+                std::vector<std::string> words;
+                std::string w;
+                while (iss >> w) words.push_back(w);
+                if (words.empty()) { 
+                    --t; 
+                    continue; }
+
+                Task task;
+                task.id = std::stoi(words[0].substr(1));
+                task.declaredSucc = (words.size() > 1) ? std::stoi(words[1]) : 0;
+                for (std::size_t k = 2; k < words.size(); ++k)
+                    task.successors.push_back(parseEdge(words[k]));
+
+                if (task.id >= 0 && task.id < static_cast<int>(g.tasks.size()))
+                    g.tasks[task.id] = task;
+                else
+                    g.tasks.push_back(task);
+            }
+        }
+        else if (tag == "@proc") {
+            foundProc = true;
+            header >> g.numProcs;
+            ++i;
+            // raw[0] = purchase cost, raw[1] = reserved, raw[2] = type flag (see etg.h)
+            for (int p = 0; p < g.numProcs && i < lines.size(); ++p, ++i) {
+                Processor proc;
+                proc.id = p;
+                proc.raw = parseInts(lines[i]);
+                g.procs.push_back(proc);
+            }
+        }
+        else if (tag == "@times") {
+            foundTimes = true;
+            ++i;
+            for (int t = 0; t < g.numTasks && i < lines.size(); ++t, ++i)
+                g.times.push_back(parseInts(lines[i]));
+        }
+        else if (tag == "@cost") {
+            foundCost = true;
+            ++i;
+            for (int t = 0; t < g.numTasks && i < lines.size(); ++t, ++i)
+                g.costs.push_back(parseInts(lines[i]));
+        }
+        else if (tag == "@type") {
+            // Optional section: task categories. Lines: "T<id> <CAT> [width]".
+            // Collected here and applied after the whole file is read, so the
+            // section order in the file does not matter.
+            ++i;
+            while (i < lines.size() && !lines[i].empty() && lines[i][0] != '@') {
+                typeLines.push_back(lines[i]);
+                ++i;
+            }
+        }
+        else if (tag == "@comm") {
+            int nComm = 0;
+            header >> nComm;
+            ++i;
+            for (int c = 0; c < nComm && i < lines.size(); ++c, ++i) {
+                std::istringstream iss(lines[i]);
+                CommChannel ch;
+                iss >> ch.name >> ch.connectCost >> ch.bandwidth;
+                int flag;
+                while (iss >> flag) ch.canConnect.push_back(flag);
+                g.channels.push_back(ch);
+            }
+        }
+        else {
+            ++i;
+        }
+    }
+
+    if (!foundTasks) throw std::runtime_error("Missing section: @tasks");
+    if (!foundProc)  throw std::runtime_error("Missing section: @proc");
+    if (!foundTimes) throw std::runtime_error("Missing section: @times");
+    if (!foundCost)  throw std::runtime_error("Missing section: @cost");
+    if (g.numTasks <= 0) throw std::runtime_error("@tasks: task count must be > 0");
+    if (g.numProcs <= 0) throw std::runtime_error("@proc: processor count must be > 0");
+
+    // Apply the @type section (if any). Lines: "T<id> <CAT> [width]";
+    // width applies to CDT/CGT (default 2 when omitted), GT/DT/UT have width 1.
+    for (const std::string& tl : typeLines) {
+        std::istringstream iss(tl);
+        std::string tname, cname;
+        if (!(iss >> tname >> cname)) continue;
+        const int id = std::stoi(tname.substr(1));
+        if (id < 0 || id >= static_cast<int>(g.tasks.size()))
+            throw std::runtime_error("@type refers to unknown task " + tname);
+        Task& task = g.tasks[id];
+        if      (cname == "GT")  task.cat = Category::GT;
+        else if (cname == "DT")  task.cat = Category::DT;
+        else if (cname == "UT")  task.cat = Category::UT;
+        else if (cname == "CDT") task.cat = Category::CDT;
+        else if (cname == "CGT") task.cat = Category::CGT;
+        else throw std::runtime_error("Unknown task category '" + cname + "' for " + tname);
+        int w = 0;
+        if (iss >> w) {
+            if (w < 1) throw std::runtime_error("Invalid width for " + tname);
+            task.width = w;
+        } else {
+            task.width = (task.cat == Category::CDT || task.cat == Category::CGT) ? 2 : 1;
+        }
+        if ((task.cat == Category::GT || task.cat == Category::DT ||
+             task.cat == Category::UT) && task.width != 1)
+            throw std::runtime_error("Width > 1 is only valid for CDT/CGT (" + tname + ")");
+    }
+    return g;
+}
+
+const char* categoryName(Category c) {
+    switch (c) {
+        case Category::GT: return "GT";
+        case Category::DT: return "DT";
+        case Category::UT: return "UT";
+        case Category::CDT: return "CDT";
+        case Category::CGT: return "CGT";
+    }
+    return "?";
+}
+
+namespace {
+
+// Same rule as the solver side: sentinel >= 0 in both matrices + category type filter.
+bool assignmentAllowed(const ETG& g, int t, int p) {
+    if (g.times[t][p] < 0 || g.costs[t][p] < 0) return false;
+    switch (g.tasks[t].cat) {
+        case Category::DT:
+        case Category::CDT: return !g.procs[p].isUniversal();
+        case Category::UT: return g.procs[p].isUniversal();
+        default: return true;
+    }
+}
+
+}
+
+ValidationResult validateETG(const ETG& g) {
+    ValidationResult r;
+    auto err  = [&r](std::string m) { r.errors.push_back(std::move(m)); };
+    auto warn = [&r](std::string m) { r.warnings.push_back(std::move(m)); };
+
+    if (static_cast<int>(g.tasks.size()) != g.numTasks)
+        err("@tasks declares " + std::to_string(g.numTasks) + " tasks, parsed " +
+            std::to_string(g.tasks.size()));
+    if (static_cast<int>(g.procs.size()) != g.numProcs)
+        err("@proc declares " + std::to_string(g.numProcs) + " processors, parsed " +
+            std::to_string(g.procs.size()));
+
+    bool dimsOk = true;
+    auto checkMatrix = [&](const std::vector<std::vector<int>>& m, const std::string& name) {
+        if (static_cast<int>(m.size()) != g.numTasks) {
+            err(name + " has " + std::to_string(m.size()) + " rows, expected " +
+                std::to_string(g.numTasks));
+            dimsOk = false;
+        }
+        for (std::size_t t = 0; t < m.size(); ++t)
+            if (static_cast<int>(m[t].size()) != g.numProcs) {
+                err(name + " row T" + std::to_string(t) + " has " +
+                    std::to_string(m[t].size()) + " columns, expected " +
+                    std::to_string(g.numProcs));
+                dimsOk = false;
+            }
+    };
+    checkMatrix(g.times, "@times");
+    checkMatrix(g.costs, "@cost");
+
+    for (const auto& ch : g.channels)
+        if (static_cast<int>(ch.canConnect.size()) != g.numProcs)
+            err("channel " + ch.name + " has " + std::to_string(ch.canConnect.size()) +
+                " flags, expected " + std::to_string(g.numProcs));
+
+    std::vector<int> seen(g.numTasks, 0);
+    for (const auto& t : g.tasks) {
+        if (t.id < 0 || t.id >= g.numTasks) {
+            err("task id " + std::to_string(t.id) + " out of range [0, " +
+                std::to_string(g.numTasks) + ")");
+            continue;
+        }
+        if (++seen[t.id] > 1)
+            err("duplicate task id T" + std::to_string(t.id));
+        if (static_cast<int>(t.successors.size()) != t.declaredSucc)
+            warn("T" + std::to_string(t.id) + " declares " + std::to_string(t.declaredSucc) +
+                 " successors, found " + std::to_string(t.successors.size()));
+        for (const auto& e : t.successors) {
+            if (e.to == t.id)
+                err("T" + std::to_string(t.id) + " has a self-loop");
+            else if (e.to < 0 || e.to >= g.numTasks)
+                err("T" + std::to_string(t.id) + " has successor T" + std::to_string(e.to) +
+                    " out of range [0, " + std::to_string(g.numTasks) + ")");
+            if (e.data < 0)
+                err("edge T" + std::to_string(t.id) + " -> T" + std::to_string(e.to) +
+                    " has negative data volume");
+        }
+    }
+
+    bool acyclic = true;
+    const std::vector<int> order = topoOrder(g, acyclic);
+    if (!acyclic) {
+        std::vector<char> inOrder(g.numTasks, 0);
+        for (int v : order) inOrder[v] = 1;
+        std::string who;
+        for (int v = 0; v < g.numTasks; ++v)
+            if (!inOrder[v]) who += (who.empty() ? "T" : ", T") + std::to_string(v);
+        err("cycle detected, involved tasks (cycle + everything after it): " + who);
+    }
+
+    if (dimsOk) {
+        for (int t = 0; t < g.numTasks; ++t) {
+            int allowed = 0;
+            for (int p = 0; p < g.numProcs; ++p)
+                if (assignmentAllowed(g, t, p)) ++allowed;
+            if (allowed < g.tasks[t].width)
+                err("T" + std::to_string(t) + " (" + categoryName(g.tasks[t].cat) +
+                    ", width " + std::to_string(g.tasks[t].width) + ") has only " +
+                    std::to_string(allowed) + " allowed resource(s)");
+        }
+    }
+
+    return r;
+}
+
+void validateOrThrow(const ETG& g) {
+    const ValidationResult r = validateETG(g);
+    if (r.ok()) return;
+    std::string msg = "Invalid ETG file (" + std::to_string(r.errors.size()) + " error(s)):";
+    for (const auto& e : r.errors) msg += "\n  - " + e;
+    throw std::runtime_error(msg);
+}
+
+std::vector<std::vector<int>> buildPredecessors(const ETG& g) {
+    std::vector<std::vector<int>> preds(g.numTasks);
+    for (const auto& t : g.tasks)
+        for (const auto& e : t.successors)
+            if (e.to >= 0 && e.to < g.numTasks)
+                preds[e.to].push_back(t.id);
+    return preds;
+}
+
+std::vector<int> topoOrder(const ETG& g, bool& acyclic) {
+    std::vector<int> indeg(g.numTasks, 0);
+    for (const auto& t : g.tasks)
+        for (const auto& e : t.successors)
+            if (e.to >= 0 && e.to < g.numTasks) ++indeg[e.to];
+
+    std::vector<int> ready, order;
+    for (int v = 0; v < g.numTasks; ++v)
+        if (indeg[v] == 0) ready.push_back(v);
+
+    while (!ready.empty()) {
+        const int v = ready.back();
+        ready.pop_back();
+        order.push_back(v);
+        for (const auto& e : g.tasks[v].successors)
+            if (e.to >= 0 && e.to < g.numTasks && --indeg[e.to] == 0)
+                ready.push_back(e.to);
+    }
+    acyclic = (static_cast<int>(order.size()) == g.numTasks);
+    return order;
+}
+
+void printSummary(const ETG& g, std::ostream& os) {
+    os << "ETG: " << g.numTasks << " tasks, " << g.numProcs << " processors, "
+       << g.channels.size() << " channel(s)\n";
+    os << "times: " << g.times.size() << " x " << (g.times.empty() ? 0 : g.times[0].size())
+       << ", cost: " << g.costs.size() << " x " << (g.costs.empty() ? 0 : g.costs[0].size()) << "\n\n";
+
+    os << "Tasks (round-trip):\n";
+    for (const auto& t : g.tasks) {
+        os << "T" << t.id;
+        if (t.cat != Category::GT || t.width != 1) {
+            os << " [" << categoryName(t.cat);
+            if (t.width != 1) os << " x" << t.width;
+            os << "]";
+        }
+        os << " " << t.successors.size();
+        for (const auto& e : t.successors)
+            os << " " << e.to << "(" << e.data << ")";
+        if (static_cast<int>(t.successors.size()) != t.declaredSucc)
+            os << "   [WARNING: declared " << t.declaredSucc << "]";
+        os << "\n";
+    }
+
+    os << "\nProcessors:\n";
+    for (const auto& p : g.procs) {
+        os << "P" << p.id << " raw=[";
+        for (std::size_t k = 0; k < p.raw.size(); ++k)
+            os << p.raw[k] << (k + 1 < p.raw.size() ? "," : "");
+        os << "] cost=" << p.cost() << " typeFlag=" << p.typeFlag() << "\n";
+    }
+
+    os << "\nChannels:\n";
+    for (const auto& ch : g.channels)
+        os << ch.name << " connectCost=" << ch.connectCost
+           << " bandwidth=" << ch.bandwidth
+           << " flags=" << ch.canConnect.size() << "\n";
+
+    bool acyclic = true;
+    const auto order = topoOrder(g, acyclic);
+    const auto preds = buildPredecessors(g);
+
+    os << "\nValidation:\n";
+    os << "DAG: " << (acyclic ? "YES" : "NO - CYCLE DETECTED") << "\n";
+
+    os << "roots:";
+    for (int v = 0; v < g.numTasks; ++v) if (preds[v].empty()) os << " T" << v;
+    os << "\nleaves:";
+    for (int v = 0; v < g.numTasks; ++v) if (g.tasks[v].successors.empty()) os << " T" << v;
+    os << "\ntopo:";
+    for (int v : order) os << " T" << v;
+    os << "\n";
+
+    bool timesOk = true, costOk = true;
+    for (const auto& r : g.times) if (static_cast<int>(r.size()) != g.numProcs) timesOk = false;
+    for (const auto& r : g.costs) if (static_cast<int>(r.size()) != g.numProcs) costOk = false;
+    os << "times: columns == processors: " << (timesOk ? "YES" : "NO") << "\n";
+    os << "cost:  columns == processors: " << (costOk  ? "YES" : "NO") << "\n";
+    for (const auto& ch : g.channels)
+        os << ch.name << ": flags == processors: "
+           << (static_cast<int>(ch.canConnect.size()) == g.numProcs ? "YES" : "NO") << "\n";
+}
+
+}
