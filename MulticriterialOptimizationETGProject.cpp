@@ -11,10 +11,21 @@ int main(int argc, char** argv)
     const std::string path = (argc > 1) ? argv[1] : "input.txt";
     try {
         const etg::ETG graph = etg::parseETG(path);
+
+        const etg::ValidationResult vr = etg::validateETG(graph);
+        for (const auto& w : vr.warnings)
+            std::cerr << "WARNING: " << w << '\n';
+        if (!vr.ok()) {
+            std::cerr << "Invalid ETG file (" << vr.errors.size() << " error(s)):\n";
+            for (const auto& e : vr.errors)
+                std::cerr << "  - " << e << '\n';
+            return 1;
+        }
+
         etg::printSummary(graph, std::cout);
     }
     catch (const std::exception& ex) {
-        std::cerr << "Blad: " << ex.what() << '\n';
+        std::cerr << "Error: " << ex.what() << '\n';
         return 1;
     }
     return 0;

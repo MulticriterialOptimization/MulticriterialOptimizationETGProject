@@ -12,34 +12,49 @@ struct Edge {
     int data = 0; // volume of data to transfer; 0 = no communication needed
 };
 
-// UNCERTAIN: task category (DT / GT / UT / CDT / CGT) is not present in the current file format. 
-// In this instance every task has finite times/costs on all processors,
-// so all tasks behave as GT. A full ETG would need either an explicit category field
-// per task or sentinel values in the times/cost matrices marking forbidden assignments.
-// For CDT/CGT (parallel execution) the number of simultaneous resources per task is
-// also missing. Task repetition, mentioned in the ETG spec, is not encoded either.
+// Task categories per the ETG specification. How a task may be executed:
+// GT - one resource of any type (default when @type does not mention the task),
+// DT - one SPECIALIZED resource (sentinels in the matrices may narrow it further to its "specific" dedicated resources),
+// UT - one UNIVERSAL resource,
+// CDT - `width` specialized resources working SIMULTANEOUSLY,
+// CGT - `width` resources of any type working SIMULTANEOUSLY.
+// Categories are read from the optional `@type` section:
+//  @type
+//  T3 DT
+//  T5 CDT 3
+//  T7 CGT 2
+// Tasks absent from @type are GT.
+// Independently, a sentinel value < 0 in @times/@cost marks a FORBIDDEN
+// assignment of that task to that resource (used e.g. for "specific" DT).
+// Task repetition from the ETG spec is NOT modeled. -> but maybe it should be -> CONSIDER / ASK??? 
+enum class Category { GT, DT, UT, CDT, CGT };
+
+const char* categoryName(Category c);
+
 struct Task {
     int id = -1;
     int declaredSucc = 0;
+    Category cat = Category::GT;
+    int width = 1; // number of simultaneous resources (>1 only for CDT/CGT)
     std::vector<Edge> successors;
 };
 
+// @proc row interpretation (3 columns):
+//   raw[0] - one-time purchase/activation cost, paid once iff the resource
+//            executes at least one task,
+//   raw[1] - reserved/unknown (always 0 in available instances) - ASK GÓRSKI.
+//   raw[2] - type flag: 1 = universal (may execute many tasks sequentially),
+//            0 = specialized (executes exactly ONE task, per the ETG spec).
+// NOTE for input.txt: the fast/expensive columns of the matrices (0-1) do not
+// coincide with the flag-0 rows (25-26). The algorithm does not depend on this:
+// it only uses the numbers + the capacity rule implied by the flag.
 struct Processor {
     int id = -1;
     std::vector<int> raw;
 
-    // UNCERTAIN: likely a one-time activation cost paid once when this processor is used in the schedule? 
     int cost() const { return raw.empty() ? 0 : raw[0]; }
-
-    // UNCERTAIN: raw[1] have no idea what is this? 
-
-    // UNCERTAIN: hypothesis that raw[2] encodes resource type: 1 = universal
-    // (slow, cheap), 0 = specialized (fast, expensive) ?
     int typeFlag() const { return raw.size() > 2 ? raw[2] : -1; }
-
-    // SCHEDULING CONSTRAINT (pending confirmation of raw[2] semantics):
-    // specialized resources can execute only one task in the entire schedule,
-    // while universal resources can execute multiple tasks sequentially.
+    bool isUniversal() const { return typeFlag() != 0; } // missing flag -> assume universal
 };
 
 struct CommChannel {
@@ -71,6 +86,16 @@ std::vector<std::vector<int>> buildPredecessors(const ETG& g);
 std::vector<int> topoOrder(const ETG& g, bool& acyclic);
 
 void printSummary(const ETG& g, std::ostream& os);
+
+struct ValidationResult {
+    std::vector<std::string> errors; 
+    std::vector<std::string> warnings;
+    bool ok() const { return errors.empty(); }
+};
+
+ValidationResult validateETG(const ETG& g);
+
+void validateOrThrow(const ETG& g);
 
 }
 
