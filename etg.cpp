@@ -4,6 +4,7 @@
 #include <sstream>
 #include <iostream>
 #include <stdexcept>
+#include <cctype>
 
 namespace {
 
@@ -39,6 +40,26 @@ etg::Edge parseEdge(const std::string& tok) {
 
 namespace etg {
 
+// Split a task token "GT0" / "CDT3" / "DT8" / bare "T0" into category + id.
+// The id is the trailing run of digits; the leading letters are the category.
+bool parseTaskToken(const std::string& tok, Category& cat, int& id) {
+    std::size_t p = 0;
+    while (p < tok.size() && !std::isdigit(static_cast<unsigned char>(tok[p]))) ++p;
+    if (p == 0 || p == tok.size()) return false; // no prefix or no number
+    const std::string prefix = tok.substr(0, p);
+    const std::string number = tok.substr(p);
+
+    if      (prefix == "GT" || prefix == "T") cat = Category::GT;
+    else if (prefix == "DT")  cat = Category::DT;
+    else if (prefix == "UT")  cat = Category::UT;
+    else if (prefix == "CDT") cat = Category::CDT;
+    else if (prefix == "CGT") cat = Category::CGT;
+    else return false;
+
+    id = std::stoi(number);
+    return true;
+}
+
 ETG parseETG(const std::string& path) {
     std::ifstream in(path);
     if (!in) throw std::runtime_error("Cannot open a file: " + path);
@@ -49,7 +70,6 @@ ETG parseETG(const std::string& path) {
 
     ETG g;
     bool foundTasks = false, foundProc = false, foundTimes = false, foundCost = false;
-    std::vector<std::string> typeLines;
     std::size_t i = 0;
     while (i < lines.size()) {
         if (lines[i].empty()) { ++i; continue; }
@@ -73,7 +93,12 @@ ETG parseETG(const std::string& path) {
                     continue; }
 
                 Task task;
-                task.id = std::stoi(words[0].substr(1));
+                Category cat;
+                int tid;
+                if (!parseTaskToken(words[0], cat, tid))
+                    throw std::runtime_error("Cannot parse task token '" + words[0] + "'");
+                task.id = tid;
+                task.cat = cat;
                 task.declaredSucc = (words.size() > 1) ? std::stoi(words[1]) : 0;
                 for (std::size_t k = 2; k < words.size(); ++k)
                     task.successors.push_back(parseEdge(words[k]));
@@ -108,16 +133,6 @@ ETG parseETG(const std::string& path) {
             for (int t = 0; t < g.numTasks && i < lines.size(); ++t, ++i)
                 g.costs.push_back(parseInts(lines[i]));
         }
-        else if (tag == "@type") {
-            // Optional section: task categories. Lines: "T<id> <CAT> [width]".
-            // Collected here and applied after the whole file is read, so the
-            // section order in the file does not matter.
-            ++i;
-            while (i < lines.size() && !lines[i].empty() && lines[i][0] != '@') {
-                typeLines.push_back(lines[i]);
-                ++i;
-            }
-        }
         else if (tag == "@comm") {
             int nComm = 0;
             header >> nComm;
@@ -143,33 +158,6 @@ ETG parseETG(const std::string& path) {
     if (g.numTasks <= 0) throw std::runtime_error("@tasks: task count must be > 0");
     if (g.numProcs <= 0) throw std::runtime_error("@proc: processor count must be > 0");
 
-    // Apply the @type section (if any). Lines: "T<id> <CAT> [width]";
-    // width applies to CDT/CGT (default 2 when omitted), GT/DT/UT have width 1.
-    for (const std::string& tl : typeLines) {
-        std::istringstream iss(tl);
-        std::string tname, cname;
-        if (!(iss >> tname >> cname)) continue;
-        const int id = std::stoi(tname.substr(1));
-        if (id < 0 || id >= static_cast<int>(g.tasks.size()))
-            throw std::runtime_error("@type refers to unknown task " + tname);
-        Task& task = g.tasks[id];
-        if      (cname == "GT")  task.cat = Category::GT;
-        else if (cname == "DT")  task.cat = Category::DT;
-        else if (cname == "UT")  task.cat = Category::UT;
-        else if (cname == "CDT") task.cat = Category::CDT;
-        else if (cname == "CGT") task.cat = Category::CGT;
-        else throw std::runtime_error("Unknown task category '" + cname + "' for " + tname);
-        int w = 0;
-        if (iss >> w) {
-            if (w < 1) throw std::runtime_error("Invalid width for " + tname);
-            task.width = w;
-        } else {
-            task.width = (task.cat == Category::CDT || task.cat == Category::CGT) ? 2 : 1;
-        }
-        if ((task.cat == Category::GT || task.cat == Category::DT ||
-             task.cat == Category::UT) && task.width != 1)
-            throw std::runtime_error("Width > 1 is only valid for CDT/CGT (" + tname + ")");
-    }
     return g;
 }
 
@@ -274,10 +262,17 @@ ValidationResult validateETG(const ETG& g) {
             int allowed = 0;
             for (int p = 0; p < g.numProcs; ++p)
                 if (assignmentAllowed(g, t, p)) ++allowed;
-            if (allowed < g.tasks[t].width)
+            // Every task needs at least one feasible resource. Common tasks
+            // (CDT/CGT) may use more, but the count is decided by the
+            // optimizer, so a single feasible resource is enough to be valid.
+            if (allowed < 1)
                 err("T" + std::to_string(t) + " (" + categoryName(g.tasks[t].cat) +
-                    ", width " + std::to_string(g.tasks[t].width) + ") has only " +
-                    std::to_string(allowed) + " allowed resource(s)");
+                    ") has no allowed resource (forbidden by category filter "
+                    "and/or matrix sentinels)");
+            else if (g.tasks[t].isCommon() && allowed < 2)
+                warn("T" + std::to_string(t) + " (" + categoryName(g.tasks[t].cat) +
+                     ") is a common task but only 1 resource is allowed, so it "
+                     "can never run on more than one resource");
         }
     }
 
@@ -331,12 +326,8 @@ void printSummary(const ETG& g, std::ostream& os) {
 
     os << "Tasks (round-trip):\n";
     for (const auto& t : g.tasks) {
-        os << "T" << t.id;
-        if (t.cat != Category::GT || t.width != 1) {
-            os << " [" << categoryName(t.cat);
-            if (t.width != 1) os << " x" << t.width;
-            os << "]";
-        }
+        // Print in the new token form: GT0, UT2, CDT3, ...
+        os << categoryName(t.cat) << t.id;
         os << " " << t.successors.size();
         for (const auto& e : t.successors)
             os << " " << e.to << "(" << e.data << ")";

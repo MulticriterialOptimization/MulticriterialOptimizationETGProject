@@ -11,31 +11,39 @@ instance and how it maps to the data model in `etg.h`.
 - Empty lines are ignored. Unknown sections are skipped.
 - Sections may appear in any order, with one practical exception:
   `@tasks` must appear before `@times` and `@cost`, because the task
-  count is needed to read the matrices. `@type` is fully order-independent.
+  count is needed to read the matrices.
 - Mandatory sections: `@tasks`, `@proc`, `@times`, `@cost`.
-  Optional sections: `@type`, `@comm`.
+  Optional section: `@comm`.
 - Task ids are `0 .. numTasks-1`, resource (processor) ids are
   `0 .. numProcs-1`. Resource ids are implicit: the k-th row of `@proc`
-  is resource `Pk`.
+  is resource `Pk`. The task **category is encoded in the id prefix**
+  (see `@tasks` below); there is no separate `@type` section.
 
 ## `@tasks` — the task graph (mandatory)
 
 ```
 @tasks N
-T<id> <declaredSuccessors> [succ1(data1)] [succ2(data2)] ...
+<CAT><id> <declaredSuccessors> [succ1(data1)] [succ2(data2)] ...
 ```
 
 - `N` — number of tasks; exactly `N` task lines follow.
-- `T<id>` — task identifier (`T` + integer).
+- `<CAT><id>` — task identifier: a **category prefix** followed by an
+  integer id. The prefix is one of `GT`, `DT`, `UT`, `CDT`, `CGT`
+  (see the category table below). A bare `T<id>` is also accepted and
+  treated as `GT`, so older files still parse. Examples: `GT0`, `UT2`,
+  `CDT3`, `CGT4`, `DT8`.
 - `<declaredSuccessors>` — declared number of successors. Used as a
   consistency check only: a mismatch with the actual edge list produces
   a WARNING, not an error (the edge list is the source of truth).
-- `succ(data)` — a directed edge to task `T<succ>` carrying `data`
+- `succ(data)` — a directed edge to task `<succ>` carrying `data`
   units of data. `data = 0` means a pure precedence constraint with no
   communication. A successor without parentheses means `data = 0`.
+  NOTE: successors are referenced by **bare numeric id**, not by the
+  category-prefixed token.
 
-Maps to: `struct Task { id, declaredSucc, cat, width, successors }`,
-where each edge is `struct Edge { to, data }`.
+Maps to: `struct Task { id, declaredSucc, cat, successors }`,
+where each edge is `struct Edge { to, data }`. The category is parsed
+from the prefix by `parseTaskToken`.
 
 The graph must be a DAG (no cycles, no self-loops) — checked by
 `validateETG`.
@@ -44,13 +52,14 @@ Example:
 
 ```
 @tasks 3
-T0 2 1(10) 2(0)
-T1 1 2(5)
-T2 0
+GT0 2 1(10) 2(0)
+UT1 1 2(5)
+CGT2 0
 ```
 
-T0 has two successors: T1 (10 units of data) and T2 (precedence only).
-T1 sends 5 units of data to T2. T2 is the exit task.
+T0 (general task) has two successors: T1 (10 units of data) and T2
+(precedence only). T1 (universal task) sends 5 units of data to T2.
+T2 (common general task) is the exit task.
 
 ## `@proc` — resources (mandatory)
 
@@ -116,51 +125,67 @@ Example (3 tasks × 3 resources, T1 forbidden on P0):
 8 5 40
 ```
 
-## `@type` — task categories (optional)
+## Task categories (encoded in the `@tasks` id prefix)
 
-```
-@type
-T<id> <CATEGORY> [width]
-```
+The category of a task is given by the letter prefix of its id in the
+`@tasks` section. There is **no `@type` section**. A bare `T<id>`
+(no letters) defaults to `GT`, so legacy files remain valid.
 
-Tasks not listed here default to `GT`, so legacy files without this
-section remain fully valid.
+| Category | Prefix | Resources allowed | How many resources |
+|---|---|---|---|
+| General task            | `GT`  | one resource of any type | 1 |
+| Dedicated task          | `DT`  | one SPECIALIZED resource (sentinels may narrow it to specific ones) | 1 |
+| Universal task          | `UT`  | one UNIVERSAL resource | 1 |
+| Common dedicated task   | `CDT` | SPECIALIZED resources working simultaneously | **chosen by the optimizer (≥1, no upper limit)** |
+| Common general task     | `CGT` | resources of any type working simultaneously | **chosen by the optimizer (≥1, no upper limit)** |
 
-| Category | Resources allowed | Width |
-|---|---|---|
-| `GT`  | one resource of any type | 1 |
-| `DT`  | one SPECIALIZED resource (sentinels may narrow it to specific ones) | 1 |
-| `UT`  | one UNIVERSAL resource | 1 |
-| `CDT` | `width` SPECIALIZED resources working simultaneously | given (default 2) |
-| `CGT` | `width` resources of any type working simultaneously | given (default 2) |
+The effective set of resources allowed for a task is the intersection of
+the category filter (above) and the matrix sentinels (a `< 0` entry in
+`@times`/`@cost` forbids that task/resource pair). Every task must have
+at least one allowed resource, otherwise the file is rejected.
 
-Rules:
+### Common tasks (CDT / CGT) — cost and time model
 
-- `width` is only valid for `CDT`/`CGT`; for `GT`/`DT`/`UT` it is
-  always 1 (an explicit `width > 1` is an error).
-- The effective set of allowed resources for a task is the intersection
-  of the category type filter and the matrix sentinels. If it has fewer
-  than `width` elements, the file is rejected
-  (`T3 (CDT, width 4) has only 3 allowed resource(s)`).
+Common tasks are NOT given a fixed number of resources in the file. How
+many resources `k` execute a common task is part of the **solution**
+produced by the genetic algorithm, not part of the instance. There is no
+upper limit on `k` (beyond the number of allowed resources).
 
-Common task semantics (CDT/CGT, assumptions to confirm with the
-instructor): the task needs exactly `width` resources at the same time.
-All of them start together and stay busy until the task finishes;
-duration = the MAXIMUM of the chosen resources' execution times (the
-slowest participant determines completion); execution cost = the SUM of
-the chosen resources' costs. A specialized resource taking part in a
-common task consumes its single task slot.
+When a common task `t` runs on a set `S` of `k` resources (`k = |S|`),
+each chosen resource does a `1/k` share of the work:
+
+- **total time** = sum over `p ∈ S` of `times[t][p] / k`
+- **total cost** = sum over `p ∈ S` of `costs[t][p] / k`
+
+The resources in `S` may differ (each has its own row entry), so the
+optimizer can pick faster/cheaper resources for the shares and the totals
+can shrink slightly compared to running the whole task on one resource.
+For a non-common task `k = 1` and both formulas collapse to the plain
+matrix entry `times[t][p]` / `costs[t][p]`.
+
+### Communication out of a common task
+
+Because a common task produces its result in `k` pieces (one per
+participating resource), each outgoing edge carrying `data` units is also
+split: **each of the `k` resources sends its own `data / k` piece** to
+the resource(s) running the dependent task. A `data / k` piece sent over
+a channel of bandwidth `b` takes `ceil((data / k) / b)` time units, and
+the per-(channel, resource) connection cost is paid for each resource
+that actually transfers a piece (see `@comm` below). Pieces that stay on
+a resource already running the dependent task are local (free,
+instantaneous).
 
 Example:
 
 ```
-@type
-T1 UT
-T2 DT
-T3 CDT 2
-T4 CGT 3
+@tasks 5
+GT0  2 1(0) 2(0)
+CGT3 1 4(30)
+...
 ```
 
+If `CGT3` runs on 3 resources, each does `1/3` of the time and cost, and
+each sends `30 / 3 = 10` data units to whatever resource executes T4.
 ## `@comm` — communication channels (optional)
 
 ```
@@ -215,8 +240,7 @@ use it.
 - file cannot be opened,
 - a mandatory section is missing,
 - task/processor count is not positive,
-- `@type` refers to an unknown task, uses an unknown category name,
-  or sets an invalid width.
+- a task token cannot be parsed (unknown category prefix or missing id).
 
 `validateETG` collects ALL remaining problems at once and returns them
 as a list of errors and warnings:
@@ -230,7 +254,8 @@ as a list of errors and warnings:
 | successor ids within `[0, N)`, no self-loops | error |
 | edge data volume non-negative | error |
 | the graph is acyclic (cycle participants are listed) | error |
-| every task has at least `width` allowed resources (category filter + sentinels) | error |
+| every task has at least 1 allowed resource (category filter + sentinels) | error |
+| a common task (CDT/CGT) has only 1 allowed resource | warning |
 | `declaredSuccessors` equals the actual successor count | warning |
 
 Program exit codes: `0` = file parsed and valid, `1` = open/parse/
@@ -240,8 +265,8 @@ validation error.
 
 ```
 @tasks 2
-T0 1 1(0)
-T1 0
+GT0 1 1(0)
+GT1 0
 @proc 1
 0 0 1
 @times
