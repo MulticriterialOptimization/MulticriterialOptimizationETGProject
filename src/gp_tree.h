@@ -12,7 +12,6 @@ enum class TermType { COST, TIME, BUY_COST, N_SUCC, FREE_AT, CONST, COUNT };
 
 constexpr int FUNC_COUNT = static_cast<int>(FuncType::COUNT);
 constexpr int TERM_COUNT = static_cast<int>(TermType::COUNT);
-
 struct EvalContext {
     double cost    = 0.0;
     double time    = 0.0;
@@ -23,9 +22,9 @@ struct EvalContext {
 
 struct Node {
     bool isFunc = false;
-    FuncType func = FuncType::ADD;
-    TermType term = TermType::COST;
-    double constVal = 0.0;
+    FuncType func = FuncType::ADD;  // used when isFunc == true
+    TermType term = TermType::COST; // used when isFunc == false
+    double constVal = 0.0;          // used when term == CONST
     std::unique_ptr<Node> left;
     std::unique_ptr<Node> right;
 };

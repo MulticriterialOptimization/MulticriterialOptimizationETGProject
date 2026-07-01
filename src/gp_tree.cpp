@@ -6,6 +6,7 @@ namespace gp {
 
 // --- Construction helpers ---
 
+// Creates a binary function node owning two child subtrees.
 std::unique_ptr<Node> makeFunc(FuncType f, std::unique_ptr<Node> l, std::unique_ptr<Node> r) {
     auto n = std::make_unique<Node>();
     n->isFunc = true;
@@ -15,6 +16,7 @@ std::unique_ptr<Node> makeFunc(FuncType f, std::unique_ptr<Node> l, std::unique_
     return n;
 }
 
+// Creates a named terminal leaf (feature from EvalContext).
 std::unique_ptr<Node> makeTerm(TermType t) {
     auto n = std::make_unique<Node>();
     n->isFunc = false;
@@ -22,6 +24,7 @@ std::unique_ptr<Node> makeTerm(TermType t) {
     return n;
 }
 
+// Creates a constant-value leaf.
 std::unique_ptr<Node> makeConst(double val) {
     auto n = std::make_unique<Node>();
     n->isFunc = false;
@@ -32,6 +35,7 @@ std::unique_ptr<Node> makeConst(double val) {
 
 // --- Evaluation ---
 
+// Returns the numeric value of a terminal leaf given the current context.
 static double terminalValue(const Node& node, const EvalContext& ctx) {
     switch (node.term) {
         case TermType::COST:     return ctx.cost;
@@ -46,6 +50,7 @@ static double terminalValue(const Node& node, const EvalContext& ctx) {
 
 static constexpr double DIV_PROTECT_EPS = 1e-9;
 
+// Recursively evaluates the priority-rule tree for one (task, processor) candidate.
 double evaluate(const Node& node, const EvalContext& ctx) {
     if (!node.isFunc)
         return terminalValue(node, ctx);
@@ -67,11 +72,13 @@ double evaluate(const Node& node, const EvalContext& ctx) {
 
 // --- Tree metrics ---
 
+// Returns the maximum depth of the tree (a single leaf has depth 0).
 int depth(const Node& node) {
     if (!node.isFunc) return 0;
     return 1 + std::max(depth(*node.left), depth(*node.right));
 }
 
+// Returns the total number of nodes in the tree.
 int size(const Node& node) {
     if (!node.isFunc) return 1;
     return 1 + size(*node.left) + size(*node.right);
@@ -79,6 +86,7 @@ int size(const Node& node) {
 
 // --- Clone ---
 
+// Returns a deep copy of the entire subtree rooted at node.
 std::unique_ptr<Node> clone(const Node& node) {
     auto n = std::make_unique<Node>();
     n->isFunc = node.isFunc;
@@ -92,14 +100,16 @@ std::unique_ptr<Node> clone(const Node& node) {
 
 // --- Collect all node pointers (pre-order) ---
 
+// Appends pointers to every node in the subtree (pre-order traversal) into out.
 void collectNodes(Node& root, std::vector<Node*>& out) {
     out.push_back(&root);
     if (root.left)  collectNodes(*root.left, out);
     if (root.right) collectNodes(*root.right, out);
 }
 
-// --- Random terminal generation ---
+// --- Random terminal / function helpers ---
 
+// Generates a random terminal leaf; picks CONST with a random value in [-2, 2].
 static std::unique_ptr<Node> randomTerminal(std::mt19937& rng) {
     std::uniform_int_distribution<int> dist(0, TERM_COUNT - 1);
     auto t = static_cast<TermType>(dist(rng));
@@ -110,6 +120,7 @@ static std::unique_ptr<Node> randomTerminal(std::mt19937& rng) {
     return makeTerm(t);
 }
 
+// Picks a random function type.
 static FuncType randomFunc(std::mt19937& rng) {
     std::uniform_int_distribution<int> dist(0, FUNC_COUNT - 1);
     return static_cast<FuncType>(dist(rng));
@@ -117,6 +128,7 @@ static FuncType randomFunc(std::mt19937& rng) {
 
 // --- Full method: all branches go to exactly maxDepth ---
 
+// Recursive helper for generateFull.
 static std::unique_ptr<Node> generateFullImpl(int currentDepth, int maxDepth, std::mt19937& rng) {
     if (currentDepth >= maxDepth)
         return randomTerminal(rng);
@@ -127,6 +139,7 @@ static std::unique_ptr<Node> generateFullImpl(int currentDepth, int maxDepth, st
     return makeFunc(f, std::move(left), std::move(right));
 }
 
+// Generates a full tree where every leaf sits at exactly maxDepth.
 std::unique_ptr<Node> generateFull(int maxDepth, std::mt19937& rng) {
     if (maxDepth <= 0) return randomTerminal(rng);
     return generateFullImpl(0, maxDepth, rng);
@@ -134,6 +147,7 @@ std::unique_ptr<Node> generateFull(int maxDepth, std::mt19937& rng) {
 
 // --- Grow method: branches may terminate early ---
 
+// Recursive helper for generateGrow.
 static std::unique_ptr<Node> generateGrowImpl(int currentDepth, int maxDepth, std::mt19937& rng) {
     if (currentDepth >= maxDepth)
         return randomTerminal(rng);
@@ -151,6 +165,7 @@ static std::unique_ptr<Node> generateGrowImpl(int currentDepth, int maxDepth, st
     return randomTerminal(rng);
 }
 
+// Generates a grow tree where branches may stop before maxDepth (depth <= maxDepth).
 std::unique_ptr<Node> generateGrow(int maxDepth, std::mt19937& rng) {
     if (maxDepth <= 0) return randomTerminal(rng);
     return generateGrowImpl(0, maxDepth, rng);
@@ -158,6 +173,9 @@ std::unique_ptr<Node> generateGrow(int maxDepth, std::mt19937& rng) {
 
 // --- Ramped half-and-half ---
 
+// Generates the initial population of popSize trees.
+// Cycles through depths [minDepth, maxDepth] and alternates full/grow at each depth,
+// ensuring diversity in both size and shape.
 std::vector<std::unique_ptr<Node>> rampedHalfAndHalf(
     int popSize, int minDepth, int maxDepth, std::mt19937& rng)
 {
