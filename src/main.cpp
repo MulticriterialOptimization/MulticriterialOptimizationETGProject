@@ -54,7 +54,7 @@ int main(int argc, char** argv)
             std::cout << " | nSucc=" << prep.nSucc[t] << "\n";
         }
 
-        // TODO: solver goes here (Osoba 2 + Osoba 3)
+        // TODO: solver goes here
     }
     catch (const std::exception& ex) {
         std::cerr << "Error: " << ex.what() << '\n';
