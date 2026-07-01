@@ -130,6 +130,10 @@ ValidationResult validateETG(const ETG& g);
 
 void validateOrThrow(const ETG& g);
 
+// Returns true if task t may be assigned to processor p, considering both
+// the category filter (GT/DT/UT/CDT/CGT) and sentinel values in the matrices.
+bool assignmentAllowed(const ETG& g, int t, int p);
+
 }
 
 #endif

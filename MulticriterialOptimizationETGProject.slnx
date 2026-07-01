@@ -3,5 +3,5 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="MulticriterialOptimizationETGProject.vcxproj" />
+  <Project Path="MulticriterialOptimizationETGProject.vcxproj" Id="936879f2-5836-4a97-9ecd-94655c368c01" />
 </Solution>
