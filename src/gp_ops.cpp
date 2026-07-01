@@ -3,8 +3,16 @@
 
 namespace gp {
 
-// Pick a random node pointer from a tree. Returns the pointer and the
-// parent pointer (nullptr if root was picked).
+static int depthOf(const Node& root, const Node* target) {
+    if (&root == target) return 0;
+    if (!root.isFunc) return -1;
+    int ld = depthOf(*root.left, target);
+    if (ld >= 0) return 1 + ld;
+    int rd = depthOf(*root.right, target);
+    if (rd >= 0) return 1 + rd;
+    return -1;
+}
+
 static Node* pickRandom(Node& root, std::mt19937& rng) {
     std::vector<Node*> nodes;
     collectNodes(root, nodes);
@@ -56,9 +64,9 @@ std::unique_ptr<Node> subtreeMutation(
 
     Node* mutPoint = pickRandom(*child, rng);
 
-    // Compute remaining depth budget at the mutation point.
-    // We do a simple approach: generate a small subtree and check total depth.
-    int subtreeMaxDepth = std::max(1, maxDepth - 2);
+    int pointDepth = depthOf(*child, mutPoint);
+    if (pointDepth < 0) pointDepth = 0;
+    int subtreeMaxDepth = std::max(1, maxDepth - pointDepth);
     auto newSubtree = generateGrow(subtreeMaxDepth, rng);
 
     mutPoint->isFunc   = newSubtree->isFunc;

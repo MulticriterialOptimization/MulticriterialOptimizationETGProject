@@ -67,6 +67,71 @@ TEST(test_nsucc) {
     ASSERT_EQ(pd.nSucc[6], 0);
 }
 
+TEST(test_cgt4_allowed_all_types) {
+    // CGT4 allows any processor type. times[4]={30,15,4,10} all >=0, costs[4]={3,2,70,30} all >=0.
+    auto& a = pd.allowed[4];
+    ASSERT_EQ(static_cast<int>(a.size()), 4);
+    for (int p = 0; p < 4; ++p)
+        ASSERT_TRUE(std::find(a.begin(), a.end(), p) != a.end());
+}
+
+TEST(test_cgt9_allowed_all_types) {
+    // CGT9 allows any processor type. times[9]={10,5,3,4}, costs[9]={3,1,40,12}.
+    auto& a = pd.allowed[9];
+    ASSERT_EQ(static_cast<int>(a.size()), 4);
+    for (int p = 0; p < 4; ++p)
+        ASSERT_TRUE(std::find(a.begin(), a.end(), p) != a.end());
+}
+
+TEST(test_gt5_allowed_all) {
+    // GT5 is general: any type, times[5]={50,30,5,5}, costs[5]={5,3,80,15} all >=0.
+    auto& a = pd.allowed[5];
+    ASSERT_EQ(static_cast<int>(a.size()), 4);
+}
+
+TEST(test_topo_order_valid) {
+    // Every predecessor of task t must appear before t in topo order.
+    std::vector<int> pos(g.numTasks, -1);
+    for (int i = 0; i < static_cast<int>(pd.topo.size()); ++i)
+        pos[pd.topo[i]] = i;
+
+    for (int t = 0; t < g.numTasks; ++t) {
+        ASSERT_TRUE(pos[t] >= 0); // every task is in the order
+        for (int pred : pd.preds[t])
+            ASSERT_TRUE(pos[pred] < pos[t]);
+    }
+}
+
+TEST(test_all_allowed_have_valid_sentinels) {
+    for (int t = 0; t < g.numTasks; ++t) {
+        for (int p : pd.allowed[t]) {
+            ASSERT_TRUE(g.times[t][p] >= 0);
+            ASSERT_TRUE(g.costs[t][p] >= 0);
+        }
+    }
+}
+
+TEST(test_every_task_has_at_least_one_allowed) {
+    for (int t = 0; t < g.numTasks; ++t)
+        ASSERT_TRUE(!pd.allowed[t].empty());
+}
+
+TEST(test_predecessors_complete) {
+    // UT2 has successors 9, 4, 6. So preds[9], preds[4], preds[6] should contain 2.
+    ASSERT_TRUE(std::find(pd.preds[9].begin(), pd.preds[9].end(), 2) != pd.preds[9].end());
+    ASSERT_TRUE(std::find(pd.preds[4].begin(), pd.preds[4].end(), 2) != pd.preds[4].end());
+    ASSERT_TRUE(std::find(pd.preds[6].begin(), pd.preds[6].end(), 2) != pd.preds[6].end());
+    // CDT3 has successors 7, 9. So preds[7] contains 3, preds[9] contains 3.
+    ASSERT_TRUE(std::find(pd.preds[7].begin(), pd.preds[7].end(), 3) != pd.preds[7].end());
+    ASSERT_TRUE(std::find(pd.preds[9].begin(), pd.preds[9].end(), 3) != pd.preds[9].end());
+}
+
+TEST(test_nsucc_all_tasks) {
+    // Verify nSucc for every task matches the actual successor list length.
+    for (int t = 0; t < g.numTasks; ++t)
+        ASSERT_EQ(pd.nSucc[t], static_cast<int>(g.tasks[t].successors.size()));
+}
+
 int main() {
     std::cout << "test_etg_prep\n";
     loadGraph();
@@ -74,9 +139,17 @@ int main() {
     RUN(test_ut2_allowed_universal_only);
     RUN(test_cdt3_allowed_specialized_only);
     RUN(test_dt8_allowed_specialized_only);
+    RUN(test_cgt4_allowed_all_types);
+    RUN(test_cgt9_allowed_all_types);
+    RUN(test_gt5_allowed_all);
     RUN(test_predecessors);
+    RUN(test_predecessors_complete);
     RUN(test_topo_order_size);
+    RUN(test_topo_order_valid);
+    RUN(test_all_allowed_have_valid_sentinels);
+    RUN(test_every_task_has_at_least_one_allowed);
     RUN(test_nsucc);
+    RUN(test_nsucc_all_tasks);
     std::cout << "All tests passed.\n";
     return 0;
 }
