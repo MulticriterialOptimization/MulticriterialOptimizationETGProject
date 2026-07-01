@@ -172,9 +172,7 @@ const char* categoryName(Category c) {
     return "?";
 }
 
-namespace {
 
-// Same rule as the solver side: sentinel >= 0 in both matrices + category type filter.
 bool assignmentAllowed(const ETG& g, int t, int p) {
     if (g.times[t][p] < 0 || g.costs[t][p] < 0) return false;
     switch (g.tasks[t].cat) {
@@ -183,8 +181,6 @@ bool assignmentAllowed(const ETG& g, int t, int p) {
         case Category::UT: return g.procs[p].isUniversal();
         default: return true;
     }
-}
-
 }
 
 ValidationResult validateETG(const ETG& g) {
