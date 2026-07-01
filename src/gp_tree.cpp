@@ -161,6 +161,9 @@ std::unique_ptr<Node> generateGrow(int maxDepth, std::mt19937& rng) {
 std::vector<std::unique_ptr<Node>> rampedHalfAndHalf(
     int popSize, int minDepth, int maxDepth, std::mt19937& rng)
 {
+    if (minDepth > maxDepth) std::swap(minDepth, maxDepth);
+    if (minDepth < 0) minDepth = 0;
+
     std::vector<std::unique_ptr<Node>> trees;
     trees.reserve(popSize);
 

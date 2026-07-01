@@ -121,14 +121,106 @@ TEST(test_crossover_does_not_modify_parents) {
     ASSERT_NEAR(evaluate(*parentB, ctx), bVal, 1e-12);
 }
 
+TEST(test_crossover_single_leaf_parents) {
+    std::mt19937 rng(42);
+    auto a = makeConst(1.0);
+    auto b = makeTerm(TermType::TIME);
+
+    for (int i = 0; i < 20; ++i) {
+        auto child = subtreeCrossover(*a, *b, 5, rng);
+        ASSERT_TRUE(child != nullptr);
+        ASSERT_TRUE(size(*child) >= 1);
+
+        EvalContext ctx;
+        ctx.time = 7.0;
+        double val = evaluate(*child, ctx);
+        ASSERT_TRUE(std::isfinite(val));
+    }
+}
+
+TEST(test_subtree_mutation_single_leaf) {
+    std::mt19937 rng(42);
+    auto parent = makeConst(5.0);
+
+    for (int i = 0; i < 20; ++i) {
+        auto child = subtreeMutation(*parent, 3, rng);
+        ASSERT_TRUE(child != nullptr);
+        ASSERT_TRUE(depth(*child) <= 3);
+    }
+}
+
+TEST(test_subtree_mutation_does_not_modify_parent) {
+    std::mt19937 rng(88);
+    auto parent = makeFunc(FuncType::ADD, makeTerm(TermType::COST), makeConst(5.0));
+
+    EvalContext ctx;
+    ctx.cost = 10.0;
+    double beforeVal = evaluate(*parent, ctx);
+
+    for (int i = 0; i < 20; ++i) {
+        auto child = subtreeMutation(*parent, 5, rng);
+        (void)child;
+    }
+
+    double afterVal = evaluate(*parent, ctx);
+    ASSERT_NEAR(beforeVal, afterVal, 1e-12);
+}
+
+TEST(test_point_mutation_single_leaf) {
+    std::mt19937 rng(42);
+    auto parent = makeConst(3.0);
+
+    auto child = pointMutation(*parent, rng);
+    ASSERT_TRUE(child != nullptr);
+    ASSERT_EQ(size(*child), 1);
+    ASSERT_EQ(depth(*child), 0);
+    ASSERT_FALSE(child->isFunc);
+}
+
+TEST(test_point_mutation_func_to_different_func) {
+    std::mt19937 rng(42);
+    auto parent = makeFunc(FuncType::ADD, makeTerm(TermType::COST), makeTerm(TermType::TIME));
+
+    bool foundDiffFunc = false;
+    for (int i = 0; i < 50; ++i) {
+        auto child = pointMutation(*parent, rng);
+        if (child->isFunc && child->func != FuncType::ADD) {
+            foundDiffFunc = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(foundDiffFunc);
+}
+
+TEST(test_crossover_evaluates_correctly) {
+    std::mt19937 rng(7);
+    auto a = makeFunc(FuncType::SUB, makeConst(10.0), makeTerm(TermType::COST));
+    auto b = makeFunc(FuncType::MUL, makeTerm(TermType::TIME), makeConst(0.5));
+
+    EvalContext ctx;
+    ctx.cost = 3.0; ctx.time = 8.0;
+
+    for (int i = 0; i < 30; ++i) {
+        auto child = subtreeCrossover(*a, *b, 5, rng);
+        double val = evaluate(*child, ctx);
+        ASSERT_TRUE(std::isfinite(val));
+    }
+}
+
 int main() {
     std::cout << "test_gp_ops\n";
     RUN(test_crossover_depth_limit);
     RUN(test_crossover_produces_valid_tree);
+    RUN(test_crossover_single_leaf_parents);
+    RUN(test_crossover_evaluates_correctly);
     RUN(test_subtree_mutation_depth_limit);
     RUN(test_subtree_mutation_changes_tree);
+    RUN(test_subtree_mutation_single_leaf);
+    RUN(test_subtree_mutation_does_not_modify_parent);
     RUN(test_point_mutation_preserves_structure);
     RUN(test_point_mutation_does_not_modify_parent);
+    RUN(test_point_mutation_single_leaf);
+    RUN(test_point_mutation_func_to_different_func);
     RUN(test_crossover_does_not_modify_parents);
     std::cout << "All tests passed.\n";
     return 0;
