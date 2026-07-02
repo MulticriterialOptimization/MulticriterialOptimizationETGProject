@@ -180,8 +180,25 @@ Reguła brana z **`ClsGene[t]`** (węzeł odbiorcy).
 
 ### 4.3 Prawdopodobieństwa
 
-- **Do uzupełnienia** przez zespół (osobne wagi dla PE i CLS).
-- **Tymczasowo:** uniform — każdy gen z równym prawdopodobieństwem przy inicjalizacji i mutacji.
+- PEAllocated 60%
+     - AllocCheapest 20%
+     - AllocFastest 20%
+     - AllocLFU 20%
+     - AllocIdle 20%
+     - AllocSamePred 20%
+- PECheapest 10%
+- PEFastest 10%
+- PEMin(time*cost) 20%
+
+- ClsAllocated 60%
+  - ClsAllocCheapest 20%
+  - ClsAllocFastest 20%
+  - ClsAllocLFU 30%
+  - ClsAllocIdle 30%
+- ClsCheapest 10%
+- ClsHighestBw 10%
+- ClsLFU 20%
+  
 
 ---
 
