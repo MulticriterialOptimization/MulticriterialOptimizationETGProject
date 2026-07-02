@@ -160,8 +160,6 @@ int pickChannel(ClsGene gene, const etg::ETG& graph, const EvalState& st,
                 score = static_cast<double>(st.channelUseCount[c]);
                 break;
             case ClsGene::ClsAllocIdle:
-                // "idle longest" = channel that finished its last transfer
-                // earliest = smallest channelLastFinish (min score = best).
                 score = st.channelLastFinish[c];
                 break;
             default:
@@ -324,9 +322,6 @@ int pickSingleProc(PeGene gene, const etg::ETG& graph, const etg::PreparedData& 
         int p = -1;
         if (pickSameAsPred(graph, prep, tree, taskId, st, p))
             return p;
-        // Fallback when the predecessor's processor is unavailable: pick the
-        // cheapest available one, to stay consistent with the cost objective
-        // (ETG_GA_Design_v2.md §7 / §14).
         return pickSingleProc(PeGene::Cheapest, graph, prep, tree, taskId, st, pool);
     }
 
@@ -353,8 +348,6 @@ int pickSingleProc(PeGene gene, const etg::ETG& graph, const etg::PreparedData& 
                 score = static_cast<double>(st.peUseCount[p]);
                 break;
             case PeGene::AllocIdle:
-                // "idle longest" = processor that finished its last task
-                // earliest = smallest lastFinish (min score = best).
                 score = st.lastFinish[p];
                 break;
             default:
@@ -393,8 +386,6 @@ double scoreCommonSubset(PeGene gene, const etg::ETG& graph, int taskId,
             return sum;
         }
         case PeGene::AllocIdle: {
-            // Subset score = its most-idle member (smallest lastFinish), so a
-            // subset containing a long-idle processor is preferred (min = best).
             double best = kBadScore;
             for (int p : subset) {
                 if (st.lastFinish[p] < best)
@@ -433,7 +424,6 @@ std::vector<int> pickCommonProcs(PeGene gene, const etg::ETG& graph,
             result.push_back(p);
             return result;
         }
-        // Cost-consistent fallback (see pickSingleProc / §7).
         gene = PeGene::Cheapest;
     }
 
