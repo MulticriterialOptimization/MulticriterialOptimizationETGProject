@@ -1,23 +1,54 @@
 #include "etg.h"
 #include "etg_prep.h"
+#include "spanning_tree.h"
+#include "ga.h"
 
 #include <iostream>
 #include <string>
 #include <cstdlib>
 
 static void printUsage(const char* prog) {
-    std::cerr << "Usage: " << prog << " [input_file] [--tmax N]\n";
+    std::cerr << "Usage: " << prog
+              << " [input_file] [--tmax N] [--pop N] [--generations N]"
+              << " [--seed N] [--lambda N]\n";
+}
+
+static int readIntArg(int argc, char** argv, int& i, const char* name) {
+    if (i + 1 >= argc) {
+        std::cerr << "Missing value for " << name << "\n";
+        return -1;
+    }
+    return std::atoi(argv[++i]);
 }
 
 int main(int argc, char** argv)
 {
     std::string path = "input.txt";
-    int tmax = -1;
+    solver::EvalParams evalParams;
+    solver::GaParams gaParams;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "--tmax" && i + 1 < argc) {
-            tmax = std::atoi(argv[++i]);
+        if (arg == "--tmax") {
+            int v = readIntArg(argc, argv, i, "--tmax");
+            if (v < 0) return 1;
+            evalParams.tmax = v;
+        } else if (arg == "--pop") {
+            int v = readIntArg(argc, argv, i, "--pop");
+            if (v < 0) return 1;
+            gaParams.populationSize = v;
+        } else if (arg == "--generations") {
+            int v = readIntArg(argc, argv, i, "--generations");
+            if (v < 0) return 1;
+            gaParams.generations = v;
+        } else if (arg == "--seed") {
+            int v = readIntArg(argc, argv, i, "--seed");
+            if (v < 0) return 1;
+            gaParams.seed = static_cast<unsigned>(v);
+        } else if (arg == "--lambda") {
+            int v = readIntArg(argc, argv, i, "--lambda");
+            if (v < 0) return 1;
+            evalParams.lambda = static_cast<double>(v);
         } else if (arg == "--help" || arg == "-h") {
             printUsage(argv[0]);
             return 0;
@@ -40,21 +71,21 @@ int main(int argc, char** argv)
         }
 
         const etg::PreparedData prep = etg::prepare(graph);
+        const solver::SpanningTree tree = solver::buildSpanningTree(prep);
 
         etg::printSummary(graph, std::cout);
 
-        std::cout << "\nPrepared data:\n";
-        std::cout << "  Tmax: " << (tmax > 0 ? std::to_string(tmax) : "(not set)") << "\n";
-        std::cout << "  Topological order:";
-        for (int t : prep.topo) std::cout << " T" << t;
-        std::cout << "\n";
-        for (int t = 0; t < graph.numTasks; ++t) {
-            std::cout << "  T" << t << " allowed:";
-            for (int p : prep.allowed[t]) std::cout << " P" << p;
-            std::cout << " | nSucc=" << prep.nSucc[t] << "\n";
-        }
+        std::cout << "\nGA parameters:\n";
+        std::cout << "  population: " << gaParams.populationSize << "\n";
+        std::cout << "  generations: " << gaParams.generations << "\n";
+        std::cout << "  Tmax: " << (evalParams.tmax > 0 ? std::to_string(evalParams.tmax) : "(not set)") << "\n";
+        std::cout << "  seed: " << gaParams.seed << "\n";
 
-        // TODO: solver goes here
+        const solver::GaResult result = solver::runGa(
+            graph, prep, tree, gaParams, evalParams);
+
+        std::cout << "\nBest solution after " << result.generationsRun << " generation(s):\n";
+        solver::printSchedule(result.best, graph, std::cout);
     }
     catch (const std::exception& ex) {
         std::cerr << "Error: " << ex.what() << '\n';
