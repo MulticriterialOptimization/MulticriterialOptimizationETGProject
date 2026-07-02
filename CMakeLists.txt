@@ -17,7 +17,7 @@ add_executable(etg_solver src/main.cpp)
 target_link_libraries(etg_solver PRIVATE etg_lib)
 
 enable_testing()
-foreach(test_name test_etg_prep test_gp_tree test_gp_ops)
+foreach(test_name test_etg_prep test_evaluator test_gp_tree test_gp_ops)
     add_executable(${test_name} tests/${test_name}.cpp)
     target_link_libraries(${test_name} PRIVATE etg_lib)
     add_test(NAME ${test_name} COMMAND ${test_name})
