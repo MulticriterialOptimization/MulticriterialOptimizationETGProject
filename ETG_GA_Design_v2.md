@@ -148,13 +148,13 @@ dla każdego t w porządku topologicznym:
 Komunikacja **nie jest** węzłem drzewa genotypu — powstaje w evaluatorze z przypisań + krawędzi ETG.
 
 > **Świadoma decyzja projektowa (interpretacja wykładu).**
-> Na wykładzie „spanning tree = genotyp" sugeruje crossover przez wymianę *poddrzew* struktury.
-> W tym projekcie **drzewo jest stałe i identyczne u wszystkich osobników** — nie ewoluuje.
-> Ewoluują **wyłącznie tablice genów** `peGenes[t]`/`clsGenes[t]`, a crossover jest **uniform per węzeł**
-> (dla każdego `t` bierzemy decyzję od rodzica A lub B). „Ta sama część drzewa" z wykładu ≡ „ten sam węzeł".
-> Zaleta: topologia genotypu nigdy się nie psuje, a gen „same as predecessor" ma zawsze dobrze
-> zdefiniowanego rodzica. To interpretacja czystsza implementacyjnie i wystarczająca dla CGP;
-> gdyby prowadzący wymagał ewoluującej struktury drzewa — patrz §14 (punkt otwarty).
+> **Kształt drzewa jest stały i identyczny u wszystkich osobników** — nie ewoluuje; ewoluują
+> **wyłącznie tablice genów** `peGenes[t]`/`clsGenes[t]`. Crossover działa **na poddrzewach tego
+> stałego drzewa** (subtree crossover, §9.3): losujemy węzeł i wymieniamy geny **całego poddrzewa**
+> między rodzicami — dokładnie „skopiuj tę samą część drzewa" ze slajdu. Ponieważ wszyscy dzielą
+> ten sam kształt, wymiana poddrzewa nigdy nie psuje topologii, a gen „same as predecessor" ma
+> zawsze dobrze zdefiniowanego rodzica. Nie ewoluujemy samej *struktury* drzewa (różnych kształtów
+> per osobnik) — nie jest to potrzebne, bo całą zmienność decyzji niosą geny w węzłach.
 
 ---
 
@@ -410,7 +410,17 @@ jeśli makespan > Tmax:   fitness = totalCost + λ · (makespan − Tmax)
 
 ### 9.3 Crossover
 
-- **Uniform per węzeł:** dla każdego `t` losowo weź `(PeGene, ClsGene)` od rodzica A lub B.
+- **Subtree crossover (główny operator):** losujemy węzeł `r` drzewa rozpinającego; dziecko = kopia
+  rodzica A, po czym geny `(PeGene, ClsGene)` **wszystkich węzłów poddrzewa zakorzenionego w `r`**
+  (czyli `r` i jego potomkowie w drzewie) nadpisujemy wartościami z rodzica B. Kształt drzewa jest
+  identyczny u obu rodziców, więc zbiór węzłów poddrzewa jest ten sam → operacja jest bezpieczna i nie
+  psuje struktury. Poddrzewo wyznaczamy z `SpanningTree::parent` (zejście po potomkach `r`).
+  Jedna operacja = **2 rodziców → 1 dziecko**.
+- **Wariant pomocniczy (uniform per węzeł):** dla każdego `t` niezależnie weź `(PeGene, ClsGene)` od A
+  lub B. Prostszy, ale nie zachowuje spójnych „bloków" decyzji wzdłuż gałęzi — używać tylko pomocniczo.
+
+> **Status:** obecny `ga.cpp` implementuje jeszcze wariant **uniform**. Zgodnie z decyzją z review
+> crossover **głównym** operatorem ma być **subtree crossover** — do podmiany przy najbliższej zmianie w kodzie.
 
 ### 9.4 Mutacja
 
@@ -460,7 +470,7 @@ pokolenia wg frakcji **β/γ/δ**.
 | `src/spanning_tree.h`, `src/spanning_tree.cpp` | budowa drzewa rozpinającego | gotowe |
 | `src/schedule.h` | `Schedule`, `Individual` | gotowe |
 | `src/evaluator.h`, `src/evaluator.cpp` | PE/CLS + harmonogram + fitness | jest; **poprawić kierunek idle (§4.1)** |
-| `src/ga.h`, `src/ga.cpp` | populacja, selekcja, crossover, mutacja | jest (wariant bazowy §9) |
+| `src/ga.h`, `src/ga.cpp` | populacja, selekcja, crossover, mutacja | jest (wariant bazowy §9); **crossover do zmiany na subtree §9.3** |
 | `src/main.cpp` | CLI, wczytanie, uruchomienie GA | gotowe |
 | `src/gp_tree.*`, `src/gp_ops.*` | stary plan (reguła priorytetu) — **poza tym designem** | archiwum |
 | `CGP_Algorithm_Plan.md` | stary plan zespołu — **nieaktualny** | archiwum |
@@ -540,7 +550,7 @@ pokolenia wg frakcji **β/γ/δ**.
 | `eliteCount` (kopiuj E najlepszych) | `nClone = round(δ·POP)` — klonowanie rank-selection (elityzm = klon najlepszego) |
 | `generations` stałe | dynamiczny stop `noImproveLimit` + `maxGenerations` |
 
-Operatory **wewnętrzne** (`crossover` uniform per węzeł, `mutate` = wybór node + podmiana opcji)
+Operatory **wewnętrzne** (`crossover` = subtree crossover §9.3, `mutate` = wybór węzła + podmiana opcji)
 oraz `evaluateIndividual` **zostają bez zmian** — zmienia się tylko **sposób składania nowego pokolenia**.
 
 ### 13.3 Plan zmian w kodzie (minimalny, bez ruszania evaluatora)
@@ -600,14 +610,14 @@ oraz `evaluateIndividual` **zostają bez zmian** — zmienia się tylko **sposó
        // klonowanie (elityzm: 1. klon = najlepszy, reszta rank-selection)
        next.push( ranked[0] )                // gwarancja niepogorszenia
        repeat (nClone - 1): next.push( ranked[ rankSelect(probs) ] )
-       // crossover
+       // crossover  (2 rodziców -> 1 dziecko)
        repeat nCross:
            a = ranked[rankSelect(probs)];  b = ranked[rankSelect(probs)]
-           next.push( crossover(a, b) )      // uniform per węzeł (§9.3)
-       // mutacja
+           next.push( subtreeCrossover(a, b) )   // §9.3: wymiana poddrzewa
+       // mutacja  (osobny kanał: 1 wybrany -> 1 mutant, NIE dzieci z crossoveru)
        repeat nMut:
            m = clone( ranked[rankSelect(probs)] )
-           mutateForce(m)                    // wybór node + podmiana opcji (zawsze, nie per Pm)
+           mutateForce(m)                    // wybór węzła + podmiana genu (zawsze, nie per Pm)
            next.push( m )
 
        pop = next
@@ -619,9 +629,18 @@ oraz `evaluateIndividual` **zostają bez zmian** — zmienia się tylko **sposó
 
    return best
    ```
-   Uwaga: `mutateForce` = wersja mutacji, która **na pewno** podmienia gen w wylosowanym węźle
-   (bo liczbę mutantów wyznacza `γ`, nie prawdopodobieństwo). Można to zrobić dodając parametr
-   do istniejącego `mutate` albo osobną funkcję.
+   **Doprecyzowanie operatorów (żeby nie było wątpliwości):**
+   - `linearRankProbs(POP, sp)` — zwraca wektor `p(0..POP-1)` ze wzoru §13.1 (najlepszy = indeks 0).
+   - `rankSelect(probs)` — losuje **jeden** indeks rangi wg `std::discrete_distribution(probs)`;
+     używany identycznie dla crossoveru, mutacji i klonowania.
+   - **Trzy kanały są rozłączne** i każdy wypełnia swoją część `POP`:
+     - crossover: `rankSelect` **dwóch** rodziców → `subtreeCrossover` → **1 dziecko** (§9.3),
+     - mutacja: `rankSelect` **jednego** osobnika → klon → `mutateForce` → **1 mutant**
+       (to **osobne źródło**, nie „doszlifowanie" dzieci z crossoveru),
+     - klonowanie: `rankSelect` jednego → kopia bez zmian.
+   - `mutateForce` = mutacja, która **na pewno** podmienia gen w wylosowanym węźle (liczbę mutantów
+     wyznacza `γ`, nie prawdopodobieństwo `Pm`). Realizacja: parametr do istniejącego `mutate` lub osobna funkcja.
+   - `subtreeCrossover` = operator z §9.3 (wymiana genów całego poddrzewa; potomków `r` liczymy z `parent[]`).
 
 6. **`main.cpp` / CLI** — dodać flagi:
    `--scheme lecture|basic`, `--alpha`, `--beta`, `--gamma`, `--delta`,
@@ -640,42 +659,23 @@ oraz `evaluateIndividual` **zostają bez zmian** — zmienia się tylko **sposó
 
 ---
 
-## 14. Otwarte / do uzupełnienia później
+## 14. Rozstrzygnięcia i punkty otwarte
 
-Pozycje otwarte — świadomie **niedomknięte**, z opisem, co trzeba rozstrzygnąć i jakie są opcje.
+Najpierw **decyzje** (były otwarte, teraz zamknięte — cytaty poglądowe), potem realnie **otwarte** punkty.
 
-> **Rozstrzygnięte (już nie otwarte):** definicja `τ` do wzoru `POP = α·n·τ` — przyjęto
+> **Rozstrzygnięte — definicja `τ`:** do wzoru `POP = α·n·τ` przyjęto
 > **liczbę różnych `typeFlag` w `@proc`** (1 lub 2). Szczegóły w §13.1.
 
-- [ ] **Reguła fallback dla `AllocSamePred`, gdy procesor rodzica jest niedostępny/niellegalny.**
-  Dziś (§7) proponowany fallback „z uwzględnieniem czasu". Do rozstrzygnięcia, które kryterium:
-  (a) `Fastest` spośród dostępnych (minimalizuje opóźnienie, ale może podnieść koszt),
-  (b) `Cheapest` spośród dostępnych (spójne z celem = koszt, ale może wydłużyć makespan),
-  (c) procesor minimalizujący **czas startu** zadania (najbliżej gotowy).
-  Wpływ: przy ciasnym `Tmax` (a)/(c) bezpieczniejsze; przy luźnym `Tmax` (b) tańsze.
-  Rekomendacja: (b) `Cheapest` jako spójne z fitnessem, z komentarzem w kodzie i łatwym przełącznikiem.
+> **Rozstrzygnięte — fallback `AllocSamePred`:** gdy procesor rodzica jest niedostępny/niellegalny,
+> stosujemy **(b) `Cheapest` spośród dostępnych** (spójne z celem = koszt). Już zaimplementowane
+> w `evaluator.cpp` (`pickSingleProc` / `pickCommonProcs`). Patrz §7.
 
-- [ ] **Semantyka genów LFU / idle / same-as-pred dla CDT/CGT (wybór podzbioru `S`).**
-  Geny „cheapest/fastest/MinTS" mają jasne kryterium na cały podzbiór (§6.4). Dla LFU/idle/same-pred
-  trzeba doprecyzować, jak scoruje się **podzbiór**, a nie pojedynczy procesor. Opcje:
-  (a) brute force wszystkich podzbiorów + funkcja scoringu podzbioru specyficzna dla genu
-  (np. LFU = suma/min `peUseCount` po `S`; idle = min `lastFinish` po `S`) — **obecne podejście**,
-  (b) najpierw wyznacz „reprezentanta" regułą genu (jeden procesor), potem dobierz resztę `S` tanio/szybko,
-  (c) ogranicz LFU/idle/same-pred dla common tasks do `k=1` (reprezentant) i nie rozbijaj.
-  Rekomendacja: zostawić (a), ale **udokumentować w kodzie** dokładny wzór scoringu każdego genu
-  dla podzbioru (dziś jest to zaimplementowane, ale warto opisać, bo to interpretacja spoza wykładu).
-
-- [ ] **Limit liczby podzbiorów przy dużym `|allowed[t]|` (CDT/CGT).**
-  Brute force to `2^|allowed[t]|`. Dla instancji projektowych OK, ale dla dużych trzeba zabezpieczenia.
-  Opcje: (a) twardy próg `|allowed[t]| ≤ K_MAX` (np. 16–20) i powyżej — heurystyka zachłanna
-  (dodawaj procesory poprawiające score, aż przestanie się poprawiać); (b) losowe próbkowanie podzbiorów.
-  Rekomendacja: dodać stałą `MAX_SUBSET_PROCS` i fallback zachłanny powyżej progu.
-
-- [ ] **(Opcjonalnie) Ewoluująca struktura drzewa.**
-  Obecnie drzewo jest stałe (§3.3). Gdyby prowadzący wymagał crossoveru poddrzew struktury (jak dosłownie
-  na slajdzie), trzeba by: dopuścić różne drzewa rozpinające per osobnik, dodać do genotypu `parent[]`
-  i zaimplementować subtree crossover z naprawą acykliczności. To duża zmiana — na razie **poza zakresem**,
-  odnotowana jako świadoma decyzja projektowa.
+> **Rozstrzygnięte — semantyka genów dla podzbioru CDT/CGT:** przyjęto **(a) brute force wszystkich
+> podzbiorów + scoring podzbioru per gen**, z wzorami:
+> `Cheapest`→`koszt(S)`, `Fastest`→`czas(S)`, `MinTS`→`czas(S)·koszt(S)`,
+> `LFU`→`Σ peUseCount[p]` po `S`, `Idle`→`min lastFinish[p]` po `S`,
+> `SamePred`→reprezentant `k=1` (procesor rodzica; przy braku — fallback `Cheapest`).
+> Zaimplementowane w `scoreCommonSubset` (`evaluator.cpp`). Patrz §6.4.
 
 - [ ] **`reserved` w `@proc` i repetycja zadań** — nieużywane / niemodelowane (pytanie do prowadzącego,
   patrz `Input_format.md`). Trzymać do wyjaśnienia.
