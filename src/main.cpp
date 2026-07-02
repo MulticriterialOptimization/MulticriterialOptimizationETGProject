@@ -9,8 +9,11 @@
 
 static void printUsage(const char* prog) {
     std::cerr << "Usage: " << prog
-              << " [input_file] [--tmax N] [--pop N] [--generations N]"
-              << " [--seed N] [--lambda N]\n";
+              << " [input_file] [--tmax N] [--seed N] [--lambda N]\n"
+              << "  --scheme basic|extended   evolution scheme (default: basic)\n"
+              << "  basic:   [--pop N] [--generations N]\n"
+              << "  extended: [--alpha X] [--beta X] [--gamma X] [--delta X]\n"
+              << "           [--rank-pressure X] [--no-improve N] [--max-gen N]\n";
 }
 
 static int readIntArg(int argc, char** argv, int& i, const char* name) {
@@ -19,6 +22,14 @@ static int readIntArg(int argc, char** argv, int& i, const char* name) {
         return -1;
     }
     return std::atoi(argv[++i]);
+}
+
+static double readDoubleArg(int argc, char** argv, int& i, const char* name) {
+    if (i + 1 >= argc) {
+        std::cerr << "Missing value for " << name << "\n";
+        return -1.0;
+    }
+    return std::atof(argv[++i]);
 }
 
 int main(int argc, char** argv)
@@ -49,6 +60,48 @@ int main(int argc, char** argv)
             int v = readIntArg(argc, argv, i, "--lambda");
             if (v < 0) return 1;
             evalParams.lambda = static_cast<double>(v);
+        } else if (arg == "--scheme") {
+            if (i + 1 >= argc) {
+                std::cerr << "Missing value for --scheme\n";
+                return 1;
+            }
+            std::string v = argv[++i];
+            if (v == "extended") {
+                gaParams.useExtendedScheme = true;
+            } else if (v == "basic") {
+                gaParams.useExtendedScheme = false;
+            } else {
+                std::cerr << "Unknown scheme: " << v << " (use basic|extended)\n";
+                return 1;
+            }
+        } else if (arg == "--alpha") {
+            double v = readDoubleArg(argc, argv, i, "--alpha");
+            if (v < 0.0) return 1;
+            gaParams.alpha = v;
+        } else if (arg == "--beta") {
+            double v = readDoubleArg(argc, argv, i, "--beta");
+            if (v < 0.0) return 1;
+            gaParams.beta = v;
+        } else if (arg == "--gamma") {
+            double v = readDoubleArg(argc, argv, i, "--gamma");
+            if (v < 0.0) return 1;
+            gaParams.gamma = v;
+        } else if (arg == "--delta") {
+            double v = readDoubleArg(argc, argv, i, "--delta");
+            if (v < 0.0) return 1;
+            gaParams.delta = v;
+        } else if (arg == "--rank-pressure") {
+            double v = readDoubleArg(argc, argv, i, "--rank-pressure");
+            if (v < 0.0) return 1;
+            gaParams.rankPressure = v;
+        } else if (arg == "--no-improve") {
+            int v = readIntArg(argc, argv, i, "--no-improve");
+            if (v < 0) return 1;
+            gaParams.noImproveLimit = v;
+        } else if (arg == "--max-gen") {
+            int v = readIntArg(argc, argv, i, "--max-gen");
+            if (v < 0) return 1;
+            gaParams.maxGenerations = v;
         } else if (arg == "--help" || arg == "-h") {
             printUsage(argv[0]);
             return 0;
@@ -76,15 +129,35 @@ int main(int argc, char** argv)
         etg::printSummary(graph, std::cout);
 
         std::cout << "\nGA parameters:\n";
-        std::cout << "  population: " << gaParams.populationSize << "\n";
-        std::cout << "  generations: " << gaParams.generations << "\n";
+        if (gaParams.useExtendedScheme) {
+            const int tau = solver::countPeTypes(graph);
+            std::cout << "  scheme: extended (alpha/beta/gamma/delta)\n";
+            std::cout << "  alpha: " << gaParams.alpha
+                      << "  beta: " << gaParams.beta
+                      << "  gamma: " << gaParams.gamma
+                      << "  delta: " << gaParams.delta << "\n";
+            std::cout << "  population: round(alpha*n*tau) = "
+                      << static_cast<int>(gaParams.alpha * graph.numTasks * tau)
+                      << "  (n=" << graph.numTasks << ", tau=" << tau << ")\n";
+            std::cout << "  rank pressure: " << gaParams.rankPressure << "\n";
+            std::cout << "  stop: no improvement for " << gaParams.noImproveLimit
+                      << " generation(s), max " << gaParams.maxGenerations << "\n";
+        } else {
+            std::cout << "  scheme: basic\n";
+            std::cout << "  population: " << gaParams.populationSize << "\n";
+            std::cout << "  generations: " << gaParams.generations << "\n";
+        }
         std::cout << "  Tmax: " << (evalParams.tmax > 0 ? std::to_string(evalParams.tmax) : "(not set)") << "\n";
         std::cout << "  seed: " << gaParams.seed << "\n";
 
-        const solver::GaResult result = solver::runGa(
-            graph, prep, tree, gaParams, evalParams);
+        const solver::GaResult result = gaParams.useExtendedScheme
+            ? solver::runGaExtended(graph, prep, tree, gaParams, evalParams)
+            : solver::runGa(graph, prep, tree, gaParams, evalParams);
 
-        std::cout << "\nBest solution after " << result.generationsRun << " generation(s):\n";
+        std::cout << "\nBest solution after " << result.generationsRun << " generation(s)";
+        if (result.stoppedByNoImprove)
+            std::cout << " (stopped: no improvement)";
+        std::cout << ":\n";
         solver::printSchedule(result.best, graph, std::cout);
     }
     catch (const std::exception& ex) {
