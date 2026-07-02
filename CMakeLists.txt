@@ -5,6 +5,10 @@ set(CMAKE_CXX_STANDARD 20)
 add_library(etg_lib STATIC
     src/etg.cpp
     src/etg_prep.cpp
+    src/genes.cpp
+    src/spanning_tree.cpp
+    src/evaluator.cpp
+    src/ga.cpp
     src/gp_tree.cpp
     src/gp_ops.cpp)
 target_include_directories(etg_lib PUBLIC src/)

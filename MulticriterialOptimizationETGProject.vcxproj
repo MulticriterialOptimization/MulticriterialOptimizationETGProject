@@ -155,12 +155,20 @@
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\etg.cpp" />
     <ClCompile Include="src\etg_prep.cpp" />
+    <ClCompile Include="src\genes.cpp" />
+    <ClCompile Include="src\spanning_tree.cpp" />
+    <ClCompile Include="src\evaluator.cpp" />
+    <ClCompile Include="src\ga.cpp" />
     <ClCompile Include="src\gp_tree.cpp" />
     <ClCompile Include="src\gp_ops.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\etg.h" />
     <ClInclude Include="src\etg_prep.h" />
+    <ClInclude Include="src\genes.h" />
+    <ClInclude Include="src\spanning_tree.h" />
+    <ClInclude Include="src\evaluator.h" />
+    <ClInclude Include="src\ga.h" />
     <ClInclude Include="src\gp_tree.h" />
     <ClInclude Include="src\gp_ops.h" />
     <ClInclude Include="src\schedule.h" />
