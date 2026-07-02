@@ -160,7 +160,7 @@ int pickChannel(ClsGene gene, const etg::ETG& graph, const EvalState& st,
                 score = static_cast<double>(st.channelUseCount[c]);
                 break;
             case ClsGene::ClsAllocIdle:
-                score = -st.channelLastFinish[c];
+                score = st.channelLastFinish[c];
                 break;
             default:
                 break;
@@ -322,7 +322,7 @@ int pickSingleProc(PeGene gene, const etg::ETG& graph, const etg::PreparedData& 
         int p = -1;
         if (pickSameAsPred(graph, prep, tree, taskId, st, p))
             return p;
-        return pickSingleProc(PeGene::Fastest, graph, prep, tree, taskId, st, pool);
+        return pickSingleProc(PeGene::Cheapest, graph, prep, tree, taskId, st, pool);
     }
 
     int best = pool[0];
@@ -348,7 +348,7 @@ int pickSingleProc(PeGene gene, const etg::ETG& graph, const etg::PreparedData& 
                 score = static_cast<double>(st.peUseCount[p]);
                 break;
             case PeGene::AllocIdle:
-                score = -st.lastFinish[p];
+                score = st.lastFinish[p];
                 break;
             default:
                 score = procExecCost(graph, taskId, p, st);
@@ -388,8 +388,8 @@ double scoreCommonSubset(PeGene gene, const etg::ETG& graph, int taskId,
         case PeGene::AllocIdle: {
             double best = kBadScore;
             for (int p : subset) {
-                if (-st.lastFinish[p] < best)
-                    best = -st.lastFinish[p];
+                if (st.lastFinish[p] < best)
+                    best = st.lastFinish[p];
             }
             return best;
         }
@@ -424,7 +424,7 @@ std::vector<int> pickCommonProcs(PeGene gene, const etg::ETG& graph,
             result.push_back(p);
             return result;
         }
-        gene = PeGene::Fastest;
+        gene = PeGene::Cheapest;
     }
 
     int n = static_cast<int>(pool.size());
