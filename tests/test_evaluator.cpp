@@ -255,8 +255,9 @@ TEST(test_ga_is_deterministic_for_fixed_seed) {
     solver::SpanningTree tree = solver::buildSpanningTree(pd);
 
     solver::GaParams gp;
-    gp.populationSize = 20;
-    gp.generations = 10;
+    gp.alpha = 10.0;             // POP = 10 * 2 tasks * 1 type = 20
+    gp.noImproveLimit = 5;
+    gp.maxGenerations = 50;
     gp.seed = 123;
 
     solver::GaResult r1 = solver::runGa(g, pd, tree, gp, evalParams(0));

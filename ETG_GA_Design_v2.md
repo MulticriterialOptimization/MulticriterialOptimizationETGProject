@@ -16,8 +16,9 @@
 >   **jak rozwinąć obecny kod**, żeby dało się to łatwo dołożyć bez ruszania evaluatora,
 > - pozycje **otwarte (§14)** pozostają otwarte, ale mają teraz dokładny opis.
 >
-> **Status:** specyfikacja bazowa zamknięta i zaimplementowana; warstwa ewolucyjna ma dwa warianty —
-> **bazowy** (§9) i **rozszerzony — extended** (§13); oba zaimplementowane, przełączane `--scheme`.
+> **Status:** specyfikacja zamknięta i zaimplementowana; warstwą ewolucyjną jest **wyłącznie
+> schemat rozszerzony (extended)** — §13 (`runGa`). Dawny wariant bazowy (§9) został **usunięty
+> z kodu** decyzją zespołu; sekcja §9 pozostaje jako zapis historyczny (poza §9.3, które obowiązuje).
 > **Nie dotyczy** starszego planu z `CGP_Algorithm_Plan.md` (reguła priorytetu + drzewo wyrażeń GP).
 
 ---
@@ -45,8 +46,8 @@
 Parser i walidacja ETG są gotowe (`src/etg.cpp`, `src/etg_prep.cpp`).
 **Solver GA jest zaimplementowany w całości** (`src/genes.*`, `src/spanning_tree.*`,
 `src/evaluator.*`, `src/ga.*`, `src/main.cpp`): wagi genów §4.3 wpięte, subtree crossover §9.3,
-oba warianty warstwy ewolucyjnej — bazowy (§9) i rozszerzony (§13, `runGaExtended`) — przełączane
-flagą `--scheme basic|extended`. Otwarte pozostają tylko punkty §14.
+warstwa ewolucyjna = **schemat rozszerzony §13** (`runGa`) — **jedyna wersja w kodzie**
+(dawny wariant bazowy §9 usunięty decyzją zespołu). Otwarte pozostają tylko punkty §14.
 
 ---
 
@@ -409,11 +410,11 @@ jeśli makespan > Tmax:   fitness = totalCost + λ · (makespan − Tmax)
 
 ---
 
-## 9. Operatory genetyczne — wariant BAZOWY (zaimplementowany)
+## 9. Operatory genetyczne — wariant bazowy (USUNIĘTY z kodu; zapis historyczny)
 
-> To jest wariant w `src/ga.cpp` (`runGa`). Schemat **rozszerzony (extended)** — α/β/γ/δ, rank
-> selection, dynamiczny stop — jest opisany w **§13** jako rozszerzenie tej warstwy — evaluator (§6)
-> i geny (§4) pozostają bez zmian.
+> Decyzją zespołu wariant bazowy został **usunięty** — jedyną implementacją warstwy ewolucyjnej
+> jest schemat **rozszerzony (extended)**, §13 (`runGa`). Sekcja pozostaje jako zapis historyczny;
+> **§9.3 (subtree crossover) nadal obowiązuje** — ten operator jest używany przez §13.
 
 ### 9.1 Inicjalizacja
 
@@ -436,7 +437,7 @@ jeśli makespan > Tmax:   fitness = totalCost + λ · (makespan − Tmax)
   lub B. Prostszy, ale nie zachowuje spójnych „bloków" decyzji wzdłuż gałęzi — używać tylko pomocniczo.
 
 > **Status:** zrealizowane — `ga.cpp` implementuje **subtree crossover** jako główny operator
-> (funkcja `subtreeCrossover`, używana w `runGa` i `runGaExtended`).
+> (funkcja `subtreeCrossover`, używana w `runGa` i `runGa`).
 
 ### 9.4 Mutacja
 
@@ -461,18 +462,16 @@ validateETG(graph)
 prep = prepare(graph)           // allowed, preds, topo, nSucc
 tree = buildSpanningTree(prep)  // deterministyczne
 
-pop = initPopulation(POP, prep, tree)
+pop = initPopulation(POP = round(α·n·τ))
 
-for gen in 1..GENERATIONS:                 // wariant bazowy §9
-    for each individual:
-        evaluate(ind, graph, prep, tree, Tmax)  // fenotyp + fitness
-    pop = select + crossover + mutate + elitism(pop)
+powtarzaj (aż noImproveLimit pokoleń bez poprawy, max maxGenerations):    // pętla §13
+    evaluate wszystkich (fenotyp + fitness), sortuj po fitness
+    pop = klony (elita + rank) ∪ subtree-crossover ∪ wymuszone mutacje    // frakcje δ/β/γ
 
 output best individual's schedule
 ```
 
-Wariant rozszerzony (§13) zamienia pętlę `for gen` na pętlę z **dynamicznym stopem** i konstrukcją
-pokolenia wg frakcji **β/γ/δ**.
+Szczegóły pętli (frakcje, rank selection, dynamiczny stop): pseudokod w §13.3.
 
 ---
 
@@ -486,8 +485,8 @@ pokolenia wg frakcji **β/γ/δ**.
 | `src/spanning_tree.h`, `src/spanning_tree.cpp` | budowa drzewa rozpinającego | gotowe |
 | `src/schedule.h` | `Schedule`, `Individual` | gotowe |
 | `src/evaluator.h`, `src/evaluator.cpp` | PE/CLS + harmonogram + fitness | gotowe |
-| `src/ga.h`, `src/ga.cpp` | subtree crossover, wariant bazowy §9 + rozszerzony §13 (`runGaExtended`) | gotowe |
-| `src/main.cpp` | CLI obu schematów (`--scheme basic\|extended`), uruchomienie | gotowe |
+| `src/ga.h`, `src/ga.cpp` | subtree crossover + schemat rozszerzony §13 (`runGa`) — jedyna wersja | gotowe |
+| `src/main.cpp` | CLI (`--alpha --beta --gamma --delta --rank-pressure --no-improve --max-gen`), uruchomienie | gotowe |
 | `src/gp_tree.*`, `src/gp_ops.*` | stary plan (reguła priorytetu) — **poza tym designem** | archiwum |
 | `CGP_Algorithm_Plan.md` | stary plan zespołu — **nieaktualny** | archiwum |
 | `ETG_GA_Design.md` | specyfikacja v1 | zastąpiona przez v2 |
@@ -513,14 +512,13 @@ pokolenia wg frakcji **β/γ/δ**.
 
 ## 13. Wariant rozszerzony (extended): schemat α/β/γ/δ, rank selection, dynamiczny stop
 
-> **Cel tej sekcji:** rozszerzyć bazowy pomysł (§9) o pełny schemat ewolucyjny α/β/γ/δ,
-> **nie ruszając** evaluatora (§6), genów (§4) ani reprezentacji (§5). To „nakładka" na `ga.cpp` —
-> dlatego wariant bazowy i rozszerzony współistnieją i przełącza się je flagą CLI.
-> Poniżej: definicje, wzory, konkretny plan zmian w kodzie i pseudokod pętli.
+> **Cel tej sekcji:** pełny schemat ewolucyjny α/β/γ/δ — **jedyna warstwa ewolucyjna projektu**
+> (dawny wariant bazowy §9 usunięty z kodu). Evaluator (§6), geny (§4) i reprezentacja (§5)
+> pozostają bez zmian. Poniżej: definicje, wzory, plan i pseudokod pętli.
 >
-> **Status: ZAIMPLEMENTOWANE** — `runGaExtended` w `src/ga.cpp` (+ `countPeTypes`,
-> `linearRankProbs`, `validateExtendedParams`, `mutateForce`), CLI w `main.cpp`
-> (`--scheme extended --alpha --beta --gamma --delta --rank-pressure --no-improve --max-gen`),
+> **Status: ZAIMPLEMENTOWANE** — `runGa` w `src/ga.cpp` (+ `countPeTypes`,
+> `linearRankProbs`, `validateGaParams`, `mutateForce`), CLI w `main.cpp`
+> (`--alpha --beta --gamma --delta --rank-pressure --no-improve --max-gen`),
 > testy w `tests/test_ga.cpp`.
 
 ### 13.1 Definicje
@@ -562,7 +560,7 @@ pokolenia wg frakcji **β/γ/δ**.
 
 ### 13.2 Odwzorowanie: co zamienia co (bazowy → rozszerzony)
 
-| Wariant bazowy §9 (`runGa`) | Wariant rozszerzony §13 (`runGaExtended`) |
+| Wariant bazowy §9 (usunięty z kodu) | Wariant rozszerzony §13 (`runGa`) — jedyna wersja |
 |---|---|
 | `populationSize` stałe (CLI) | `POP = round(α·n·τ)` liczone z instancji |
 | tournament (k=3) | rank selection (liniowa, `sp`) |
@@ -576,12 +574,9 @@ oraz `evaluateIndividual` **zostają bez zmian** — zmienia się tylko **sposó
 
 ### 13.3 Plan zmian w kodzie (minimalny, bez ruszania evaluatora)
 
-1. **`GaParams` (w `ga.h`)** — dodać pola rozszerzone, zachować bazowe (przełącznik `useExtendedScheme`):
+1. **`GaParams` (w `ga.h`)** — finalny kształt (jedyna wersja, bez przełącznika):
    ```cpp
    struct GaParams {
-       bool   useExtendedScheme = false;  // false = §9 (bazowy), true = §13
-
-       // --- schemat rozszerzony (§13) ---
        double alpha = 1.0;      // POP = round(alpha * numTasks * numPeTypes)
        double beta  = 0.6;      // frakcja crossover
        double gamma = 0.3;      // frakcja mutacji,     (0,1)
@@ -589,14 +584,6 @@ oraz `evaluateIndividual` **zostają bez zmian** — zmienia się tylko **sposó
        double rankPressure = 1.5;   // sp ∈ [1,2] dla rank selection
        int    noImproveLimit = 20;  // dynamiczny stop
        int    maxGenerations = 1000;// bezpiecznik
-
-       // --- wariant bazowy §9 (zostaje) ---
-       int populationSize = 50;
-       int generations = 100;
-       int eliteCount = 2;
-       int tournamentSize = 3;
-       double crossoverRate = 0.7;
-       double mutationRate = 0.1;
 
        unsigned seed = 42;
    };
@@ -613,7 +600,7 @@ oraz `evaluateIndividual` **zostają bez zmian** — zmienia się tylko **sposó
 4. **Walidacja parametrów** przy starcie: `abs(beta+gamma+delta - 1) < 1e-9`,
    `gamma∈(0,1)`, `delta∈(0,1)`, `alpha>0`, `rankPressure∈[1,2]`. Błąd → komunikat i exit 1.
 
-5. **Nowa pętla ewolucji** (`runGaExtended`, wybierana gdy `useExtendedScheme`):
+5. **Pętla ewolucji** (`runGa` — jedyna pętla w projekcie):
    ```
    POP = max(2, round(alpha * numTasks * countPeTypes(graph)))
    pop = initPopulation(POP)                 // geny wg wag §4.3
@@ -664,8 +651,8 @@ oraz `evaluateIndividual` **zostają bez zmian** — zmienia się tylko **sposó
    - `subtreeCrossover` = operator z §9.3 (wymiana genów całego poddrzewa; potomków `r` liczymy z `parent[]`).
 
 6. **`main.cpp` / CLI** — dodać flagi:
-   `--scheme extended|basic`, `--alpha`, `--beta`, `--gamma`, `--delta`,
-   `--rank-pressure`, `--no-improve`, `--max-gen`. Router wybiera `runGa` albo `runGaExtended`.
+   `--alpha`, `--beta`, `--gamma`, `--delta`, `--rank-pressure`, `--no-improve`, `--max-gen`
+   (+ wspólne `--tmax`, `--seed`, `--lambda`). Jedno wywołanie `runGa`.
 
 ### 13.4 Uwagi i pułapki
 
@@ -710,16 +697,17 @@ Implementuj / rozwijaj solver GA dla ETG według ETG_GA_Design_v2.md:
 - genotyp: SpanningTree (deterministyczne, STAŁE) + PeGene/ClsGene per taskId
 - evaluator: topo order, model common 1/k, CLS na odbiorcy, fitness cost + Tmax  [gotowe]
 - geny: wagi §4.3 w genes.cpp (discrete_distribution), kierunek idle §4.1  [gotowe]
-- warstwa ewolucyjna:
-    - bazowa (§9): tournament + Pc/Pm + elityzm + subtree crossover  [gotowe]
-    - rozszerzona (§13): POP = round(alpha*n*tau), rank selection, frakcje beta/gamma/delta (=1),
-      klonowanie, dynamiczny stop (noImproveLimit) — runGaExtended + flagi CLI  [gotowe]
+- warstwa ewolucyjna (JEDYNA — schemat rozszerzony §13): POP = round(alpha*n*tau),
+  rank selection, frakcje beta/gamma/delta (=1), klonowanie, subtree crossover §9.3,
+  dynamiczny stop (noImproveLimit) — runGa + flagi CLI  [gotowe]
+- zadania common (CDT/CGT): kawałki 1/k RÓWNOLEGLE, czas = max udziałów, per-procesor start,
+  wysyłka danych po komplecie (§2.4, §6.5)  [gotowe]
 - nie używaj gp_tree / reguły priorytetu
 - parser i prepare() już istnieją
 ```
 
 ---
 
-*Ostatnia aktualizacja: v2 — status zsynchronizowany z kodem, wagi genów zdecydowane (do wpięcia),
-jawna decyzja o stałym drzewie, dodany pełny opis schematu α/β/γ/δ + rank selection + dynamiczny stop
-jako rozszerzenie warstwy ewolucyjnej (§13), rozbudowane pozycje otwarte (§14).*
+*Ostatnia aktualizacja: schemat rozszerzony (§13) jest jedyną warstwą ewolucyjną — dawny wariant
+bazowy (§9) usunięty z kodu decyzją zespołu (sekcja pozostaje jako zapis historyczny);
+model common tasks = równoległe kawałki 1/k (czas = max udziałów).*

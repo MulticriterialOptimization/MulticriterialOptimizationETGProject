@@ -56,21 +56,8 @@ Individual subtreeCrossover(const Individual& a, const Individual& b,
     return child;
 }
 
-void mutate(Individual& ind, double mutationRate, std::mt19937& rng) {
-    if (ind.peGenes.empty())
-        return;
-
-    std::uniform_real_distribution<double> coin(0.0, 1.0);
-    std::uniform_int_distribution<int> taskDist(0, static_cast<int>(ind.peGenes.size()) - 1);
-
-    if (coin(rng) < mutationRate)
-        ind.peGenes[taskDist(rng)] = randomPeGene(rng);
-    if (coin(rng) < mutationRate)
-        ind.clsGenes[taskDist(rng)] = randomClsGene(rng);
-}
-
-// Mutation for the extended scheme: the mutant count is fixed by gamma, so the
-// operator always replaces a gene in one random node (never a no-op).
+// The mutant count is fixed by gamma, so the operator always replaces a gene
+// in one random node (never a no-op).
 void mutateForce(Individual& ind, std::mt19937& rng) {
     if (ind.peGenes.empty())
         return;
@@ -90,19 +77,6 @@ void mutateForce(Individual& ind, std::mt19937& rng) {
             g = randomClsGene(rng);
         ind.clsGenes[t] = g;
     }
-}
-
-int tournamentPick(const std::vector<Individual>& pop, int tournamentSize,
-                   std::mt19937& rng)
-{
-    std::uniform_int_distribution<int> dist(0, static_cast<int>(pop.size()) - 1);
-    int best = dist(rng);
-    for (int i = 1; i < tournamentSize; ++i) {
-        int idx = dist(rng);
-        if (pop[idx].fitness < pop[best].fitness)
-            best = idx;
-    }
-    return best;
 }
 
 void evaluateAll(std::vector<Individual>& pop, const etg::ETG& graph,
@@ -144,23 +118,23 @@ std::vector<double> linearRankProbs(int popSize, double sp) {
     return probs;
 }
 
-void validateExtendedParams(const GaParams& p) {
+void validateGaParams(const GaParams& p) {
     if (p.alpha <= 0.0)
-        throw std::invalid_argument("extended scheme: alpha must be > 0");
+        throw std::invalid_argument("GaParams: alpha must be > 0");
     if (p.beta <= 0.0 || p.beta >= 1.0)
-        throw std::invalid_argument("extended scheme: beta must be in (0,1)");
+        throw std::invalid_argument("GaParams: beta must be in (0,1)");
     if (p.gamma <= 0.0 || p.gamma >= 1.0)
-        throw std::invalid_argument("extended scheme: gamma must be in (0,1)");
+        throw std::invalid_argument("GaParams: gamma must be in (0,1)");
     if (p.delta <= 0.0 || p.delta >= 1.0)
-        throw std::invalid_argument("extended scheme: delta must be in (0,1)");
+        throw std::invalid_argument("GaParams: delta must be in (0,1)");
     if (std::abs(p.beta + p.gamma + p.delta - 1.0) > 1e-9)
-        throw std::invalid_argument("extended scheme: beta + gamma + delta must equal 1");
+        throw std::invalid_argument("GaParams: beta + gamma + delta must equal 1");
     if (p.rankPressure < 1.0 || p.rankPressure > 2.0)
-        throw std::invalid_argument("extended scheme: rank pressure must be in [1,2]");
+        throw std::invalid_argument("GaParams: rank pressure must be in [1,2]");
     if (p.noImproveLimit <= 0)
-        throw std::invalid_argument("extended scheme: no-improve limit must be > 0");
+        throw std::invalid_argument("GaParams: no-improve limit must be > 0");
     if (p.maxGenerations <= 0)
-        throw std::invalid_argument("extended scheme: max generations must be > 0");
+        throw std::invalid_argument("GaParams: max generations must be > 0");
 }
 
 GaResult runGa(
@@ -170,67 +144,7 @@ GaResult runGa(
     const GaParams& gaParams,
     const EvalParams& evalParams)
 {
-    std::mt19937 rng(gaParams.seed);
-
-    std::vector<Individual> pop;
-    pop.reserve(gaParams.populationSize);
-    for (int i = 0; i < gaParams.populationSize; ++i)
-        pop.push_back(makeRandomIndividual(graph.numTasks, rng));
-
-    evaluateAll(pop, graph, prep, tree, evalParams);
-
-    GaResult result;
-    result.generationsRun = 0;
-
-    for (int gen = 0; gen < gaParams.generations; ++gen) {
-        std::vector<Individual> sorted = pop;
-        std::sort(sorted.begin(), sorted.end(), fitnessLess);
-
-        if (gen == 0 || sorted[0].fitness < result.best.fitness)
-            result.best = sorted[0];
-
-        std::vector<Individual> next;
-        next.reserve(gaParams.populationSize);
-
-        for (int i = 0; i < gaParams.eliteCount && i < static_cast<int>(sorted.size()); ++i)
-            next.push_back(sorted[i]);
-
-        std::uniform_real_distribution<double> coin(0.0, 1.0);
-
-        while (static_cast<int>(next.size()) < gaParams.populationSize) {
-            int pa = tournamentPick(pop, gaParams.tournamentSize, rng);
-            int pb = tournamentPick(pop, gaParams.tournamentSize, rng);
-
-            Individual child;
-            if (coin(rng) < gaParams.crossoverRate)
-                child = subtreeCrossover(pop[pa], pop[pb], tree, rng);
-            else
-                child = pop[pa];
-
-            mutate(child, gaParams.mutationRate, rng);
-            next.push_back(child);
-        }
-
-        pop.swap(next);
-        evaluateAll(pop, graph, prep, tree, evalParams);
-        result.generationsRun = gen + 1;
-    }
-
-    std::sort(pop.begin(), pop.end(), fitnessLess);
-    if (pop[0].fitness < result.best.fitness)
-        result.best = pop[0];
-
-    return result;
-}
-
-GaResult runGaExtended(
-    const etg::ETG& graph,
-    const etg::PreparedData& prep,
-    const SpanningTree& tree,
-    const GaParams& gaParams,
-    const EvalParams& evalParams)
-{
-    validateExtendedParams(gaParams);
+    validateGaParams(gaParams);
 
     std::mt19937 rng(gaParams.seed);
 

@@ -8,8 +8,8 @@
 
 #include <stdexcept>
 
-// Tests for the GA layer: countPeTypes, linear rank selection, extended-scheme
-// parameter validation and the runGaExtended loop (ETG_GA_Design_v2.md §13).
+// Tests for the GA layer: countPeTypes, linear rank selection, parameter
+// validation and the runGa loop (ETG_GA_Design_v2.md §13).
 
 namespace {
 
@@ -55,9 +55,8 @@ solver::EvalParams evalParams(int tmax) {
     return p;
 }
 
-solver::GaParams extendedParams(unsigned seed) {
+solver::GaParams makeParams(unsigned seed) {
     solver::GaParams gp;
-    gp.useExtendedScheme = true;
     gp.alpha = 5.0;
     gp.beta = 0.6;
     gp.gamma = 0.3;
@@ -99,15 +98,15 @@ TEST(test_linear_rank_probs) {
     ASSERT_NEAR(sum, 1.0, 1e-12);
 }
 
-TEST(test_extended_params_validation) {
-    solver::GaParams ok = extendedParams(1);
-    solver::validateExtendedParams(ok);                // must not throw
+TEST(test_params_validation) {
+    solver::GaParams ok = makeParams(1);
+    solver::validateGaParams(ok);                // must not throw
 
     solver::GaParams bad = ok;
     bad.beta = 0.5;                                   // 0.5+0.3+0.1 != 1
     bool thrown = false;
     try {
-        solver::validateExtendedParams(bad);
+        solver::validateGaParams(bad);
     } catch (const std::invalid_argument&) {
         thrown = true;
     }
@@ -117,21 +116,21 @@ TEST(test_extended_params_validation) {
     badSp.rankPressure = 3.0;
     thrown = false;
     try {
-        solver::validateExtendedParams(badSp);
+        solver::validateGaParams(badSp);
     } catch (const std::invalid_argument&) {
         thrown = true;
     }
     ASSERT_TRUE(thrown);
 }
 
-TEST(test_extended_deterministic_and_finds_solution) {
+TEST(test_deterministic_and_finds_solution) {
     etg::ETG g = makeCrossProcComm();
     etg::PreparedData pd = etg::prepare(g);
     solver::SpanningTree tree = solver::buildSpanningTree(pd);
 
-    solver::GaParams gp = extendedParams(7);
-    solver::GaResult r1 = solver::runGaExtended(g, pd, tree, gp, evalParams(0));
-    solver::GaResult r2 = solver::runGaExtended(g, pd, tree, gp, evalParams(0));
+    solver::GaParams gp = makeParams(7);
+    solver::GaResult r1 = solver::runGa(g, pd, tree, gp, evalParams(0));
+    solver::GaResult r2 = solver::runGa(g, pd, tree, gp, evalParams(0));
 
     ASSERT_NEAR(r1.best.fitness, r2.best.fitness, 1e-9);
     ASSERT_EQ(r1.generationsRun, r2.generationsRun);
@@ -141,15 +140,15 @@ TEST(test_extended_deterministic_and_finds_solution) {
     ASSERT_NEAR(r1.best.schedule.totalCost, 48.0, 1e-9);
 }
 
-TEST(test_extended_dynamic_stop) {
+TEST(test_dynamic_stop) {
     etg::ETG g = makeCrossProcComm();
     etg::PreparedData pd = etg::prepare(g);
     solver::SpanningTree tree = solver::buildSpanningTree(pd);
 
-    solver::GaParams gp = extendedParams(3);
+    solver::GaParams gp = makeParams(3);
     gp.maxGenerations = 1000;
 
-    solver::GaResult r = solver::runGaExtended(g, pd, tree, gp, evalParams(0));
+    solver::GaResult r = solver::runGa(g, pd, tree, gp, evalParams(0));
 
     // The instance has a single feasible schedule, so fitness cannot improve
     // and the run must stop after noImproveLimit generations, not maxGenerations.
@@ -161,9 +160,9 @@ int main() {
     std::cout << "test_ga\n";
     RUN(test_count_pe_types);
     RUN(test_linear_rank_probs);
-    RUN(test_extended_params_validation);
-    RUN(test_extended_deterministic_and_finds_solution);
-    RUN(test_extended_dynamic_stop);
+    RUN(test_params_validation);
+    RUN(test_deterministic_and_finds_solution);
+    RUN(test_dynamic_stop);
     std::cout << "All tests passed.\n";
     return 0;
 }

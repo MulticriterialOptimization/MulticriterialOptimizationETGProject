@@ -1,5 +1,25 @@
 # Poprawki solvera GA — dla review
 
+## ETAP 4 — jedna wersja: extended staje się jedyną warstwą ewolucyjną
+
+Zakres: świadoma decyzja zespołu — usunięcie dawnego wariantu bazowego; **algorytm extended
+bez zmian**, tylko czyszczenie i ujednolicenie nazw pod oddanie projektu.
+
+- **`src/ga.h` / `src/ga.cpp`:** usunięte `runGa` (stara pętla tournament+elityzm), `mutate`
+  (probabilistyczne per `Pm`), `tournamentPick` oraz pola `GaParams`: `useExtendedScheme`,
+  `populationSize`, `generations`, `eliteCount`, `tournamentSize`, `crossoverRate`, `mutationRate`.
+- **Ujednolicenie nazw** (kod + testy + dokumenty): `runGaExtended` → **`runGa`**,
+  `validateExtendedParams` → **`validateGaParams`** — jedna spójna wersja bez przyrostków.
+- **`src/main.cpp`:** usunięte flagi `--scheme`, `--pop`, `--generations`; zostają
+  `--tmax --seed --lambda --alpha --beta --gamma --delta --rank-pressure --no-improve --max-gen`.
+- **Testy:** `test_ga.cpp` bez `useExtendedScheme`; test determinizmu w `test_evaluator.cpp`
+  przepisany na parametry extended (`alpha` zamiast `populationSize`).
+- **Dokumentacja:** `ETG_GA_Design_v2.md` — §9 oznaczona jako zapis historyczny (poza §9.3,
+  które obowiązuje), §1/§10/§11/§13/§15 zaktualizowane na jedyną wersję.
+  Wcześniejsze wpisy w tym pliku (etapy 1–3) opisują historyczne nazwy sprzed ujednolicenia.
+
+---
+
 ## ETAP 3 — równoległy model zadań common (CDT/CGT)
 
 Zakres: zmiana semantyki czasu zadań common z sekwencyjnej na równoległą (decyzja zespołu).
