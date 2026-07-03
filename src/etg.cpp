@@ -40,8 +40,7 @@ etg::Edge parseEdge(const std::string& tok) {
 
 namespace etg {
 
-// Split a task token "GT0" / "CDT3" / "DT8" / bare "T0" into category + id.
-// The id is the trailing run of digits; the leading letters are the category.
+// Task token (e.g. GT0, CDT3, T0) -> category + id
 bool parseTaskToken(const std::string& tok, Category& cat, int& id) {
     std::size_t p = 0;
     while (p < tok.size() && !std::isdigit(static_cast<unsigned char>(tok[p]))) ++p;
@@ -113,7 +112,6 @@ ETG parseETG(const std::string& path) {
             foundProc = true;
             header >> g.numProcs;
             ++i;
-            // raw[0] = purchase cost, raw[1] = reserved, raw[2] = type flag (see etg.h)
             for (int p = 0; p < g.numProcs && i < lines.size(); ++p, ++i) {
                 Processor proc;
                 proc.id = p;
@@ -258,9 +256,7 @@ ValidationResult validateETG(const ETG& g) {
             int allowed = 0;
             for (int p = 0; p < g.numProcs; ++p)
                 if (assignmentAllowed(g, t, p)) ++allowed;
-            // Every task needs at least one feasible resource. Common tasks
-            // (CDT/CGT) may use more, but the count is decided by the
-            // optimizer, so a single feasible resource is enough to be valid.
+            // One allowed processor is enough; k for common tasks is chosen by the GA.
             if (allowed < 1)
                 err("T" + std::to_string(t) + " (" + categoryName(g.tasks[t].cat) +
                     ") has no allowed resource (forbidden by category filter "
@@ -322,7 +318,6 @@ void printSummary(const ETG& g, std::ostream& os) {
 
     os << "Tasks (round-trip):\n";
     for (const auto& t : g.tasks) {
-        // Print in the new token form: GT0, UT2, CDT3, ...
         os << categoryName(t.cat) << t.id;
         os << " " << t.successors.size();
         for (const auto& e : t.successors)

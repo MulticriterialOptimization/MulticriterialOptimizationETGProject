@@ -64,7 +64,7 @@ double procExecCost(const etg::ETG& graph, int taskId, int procId, const EvalSta
     return c;
 }
 
-// Parallel 1/k shares: the task ends when the slowest share ends.
+// Common task: time = max(time[p]/k) over chosen processors
 double commonExecTime(const etg::ETG& graph, int taskId, const std::vector<int>& procs) {
     int k = static_cast<int>(procs.size());
     double longest = 0.0;
@@ -534,9 +534,6 @@ void evaluateIndividual(
         assign.procIds = procs;
 
         if (graph.tasks[taskId].isCommon()) {
-            // Each processor computes its 1/k share in parallel, starting as
-            // soon as it is free and the data is ready; the task (and its
-            // output data) completes when the slowest share finishes.
             double execCost = commonExecCost(graph, taskId, procs, st);
             int k = static_cast<int>(procs.size());
             double firstStart = -1.0;

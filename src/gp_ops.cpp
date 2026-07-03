@@ -3,7 +3,7 @@
 
 namespace gp {
 
-// Returns the depth of target within the tree rooted at root, or -1 if not found.
+// Returns the depth of target within the tree rooted at root, or -1 if not found
 static int depthOf(const Node& root, const Node* target) {
     if (&root == target) return 0;
     if (!root.isFunc) return -1;
@@ -14,7 +14,7 @@ static int depthOf(const Node& root, const Node* target) {
     return -1;
 }
 
-// Returns a pointer to a uniformly random node in the tree.
+// Returns a pointer to a uniformly random node in the tree
 static Node* pickRandom(Node& root, std::mt19937& rng) {
     std::vector<Node*> nodes;
     collectNodes(root, nodes);
@@ -22,20 +22,16 @@ static Node* pickRandom(Node& root, std::mt19937& rng) {
     return nodes[dist(rng)];
 }
 
-// Returns a const pointer to a uniformly random node in the tree (read-only).
+// Returns a const pointer to a uniformly random node in the tree (read-only)
 static const Node* pickRandomConst(const Node& root, std::mt19937& rng) {
-    // Collect from a const ref by casting away const for read-only traversal,
-    // returning a const pointer. The tree is not modified.
     std::vector<Node*> nodes;
     collectNodes(const_cast<Node&>(root), nodes);
     std::uniform_int_distribution<int> dist(0, static_cast<int>(nodes.size()) - 1);
     return nodes[dist(rng)];
 }
 
-// --- Subtree Crossover ---
-
-// Produces a child from parentA with one random subtree replaced by a random subtree of parentB.
-// Falls back to a clone of parentA if the resulting depth would exceed maxDepth.
+// Random subtree from B grafted into a copy of A
+// returns copy of A if depth exceeds maxDepth
 std::unique_ptr<Node> subtreeCrossover(
     const Node& parentA, const Node& parentB,
     int maxDepth, std::mt19937& rng)
@@ -46,7 +42,6 @@ std::unique_ptr<Node> subtreeCrossover(
     const Node* donorSubtree = pickRandomConst(parentB, rng);
     auto donorClone = clone(*donorSubtree);
 
-    // Replace the cross point's contents with the donor subtree.
     crossPoint->isFunc   = donorClone->isFunc;
     crossPoint->func     = donorClone->func;
     crossPoint->term     = donorClone->term;
@@ -60,10 +55,8 @@ std::unique_ptr<Node> subtreeCrossover(
     return child;
 }
 
-// --- Subtree Mutation ---
-
-// Produces a child from parent with one random subtree replaced by a newly generated subtree.
-// Falls back to a clone of parent if the resulting depth would exceed maxDepth.
+// One random subtree replaced by a newly grown one
+// falls back to parent clone on depth overflow
 std::unique_ptr<Node> subtreeMutation(
     const Node& parent, int maxDepth, std::mt19937& rng)
 {
@@ -71,7 +64,7 @@ std::unique_ptr<Node> subtreeMutation(
 
     Node* mutPoint = pickRandom(*child, rng);
 
-    // Budget the new subtree so it fits within maxDepth at the mutation point.
+    // Budget the new subtree so it fits within maxDepth at the mutation point
     int pointDepth = depthOf(*child, mutPoint);
     if (pointDepth < 0) pointDepth = 0;
     int subtreeMaxDepth = std::max(1, maxDepth - pointDepth);
@@ -90,10 +83,7 @@ std::unique_ptr<Node> subtreeMutation(
     return child;
 }
 
-// --- Point Mutation ---
-
-// Produces a child from parent with exactly one randomly chosen node changed:
-// a function is swapped for a different function, a terminal for a different terminal.
+// Exactly one node changed (function type or terminal)
 std::unique_ptr<Node> pointMutation(const Node& parent, std::mt19937& rng) {
     auto child = clone(parent);
 
@@ -105,7 +95,6 @@ std::unique_ptr<Node> pointMutation(const Node& parent, std::mt19937& rng) {
     Node* target = nodes[dist(rng)];
 
     if (target->isFunc) {
-        // Replace function with a different function.
         FuncType original = target->func;
         FuncType replacement;
         do {
@@ -114,7 +103,6 @@ std::unique_ptr<Node> pointMutation(const Node& parent, std::mt19937& rng) {
         } while (replacement == original && FUNC_COUNT > 1);
         target->func = replacement;
     } else {
-        // Replace terminal with a different terminal.
         TermType original = target->term;
         TermType replacement;
         do {

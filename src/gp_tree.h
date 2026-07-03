@@ -29,13 +29,11 @@ struct Node {
     std::unique_ptr<Node> right;
 };
 
-// --- Tree construction helpers ---
-
 std::unique_ptr<Node> makeFunc(FuncType f, std::unique_ptr<Node> l, std::unique_ptr<Node> r);
 std::unique_ptr<Node> makeTerm(TermType t);
 std::unique_ptr<Node> makeConst(double val);
 
-// --- Core operations ---
+// Core operations
 
 double evaluate(const Node& node, const EvalContext& ctx);
 int depth(const Node& node);
@@ -43,7 +41,7 @@ int size(const Node& node);
 std::unique_ptr<Node> clone(const Node& node);
 void collectNodes(Node& root, std::vector<Node*>& out);
 
-// --- Tree generation ---
+// Tree generation
 
 std::unique_ptr<Node> generateFull(int maxDepth, std::mt19937& rng);
 std::unique_ptr<Node> generateGrow(int maxDepth, std::mt19937& rng);
