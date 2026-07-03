@@ -1,5 +1,89 @@
 # Poprawki solvera GA — dla review
 
+## ETAP 3 — równoległy model zadań common (CDT/CGT)
+
+Zakres: zmiana semantyki czasu zadań common z sekwencyjnej na równoległą (decyzja zespołu).
+
+### 3.1 Czas common = max udziałów (było: suma = wykonanie „po sobie")
+**Plik:** `src/evaluator.cpp` (`commonExecTime`, `evaluateIndividual`)
+**Co:**
+- `commonExecTime`: `Σ times[t][p]/k` → **`max times[t][p]/k`** (kawałki idą równolegle,
+  zadanie kończy najwolniejszy kawałek); używane też w scoringu podzbiorów (`scoreCommonSubset`),
+- harmonogramowanie per procesor (model B): `pieceStart(p) = max(dataReady, freeAt[p])`,
+  `pieceFinish(p) = pieceStart(p) + times[t][p]/k`; `start = min pieceStart`,
+  `finish = max pieceFinish`; zajęty procesor opóźnia tylko swój kawałek,
+- `markProcUsed` (nowy, per procesor): `freeAt[p] = pieceFinish(p)` — procesor, który skończył
+  swój kawałek wcześniej, wcześniej jest wolny,
+- komunikacja bez zmian w kodzie, ale semantyka potwierdzona: wysyłka `data/k` rusza po
+  zakończeniu **całego** zadania (`finishTime` = max kawałków), potomek startuje z kompletem
+  danych (max po wszystkich transferach). Działa dla dowolnego `k ≥ 1`.
+**Dlaczego:** stary wzór sumował udziały, czyli kawałki wykonywały się de facto sekwencyjnie —
+`k > 1` nigdy nie skracało czasu i sens CDT/CGT (równoległość) ginął. Po zmianie: 2 identyczne
+procesory → 2× szybciej za ten sam koszt; koszt (`Σ costs/k`) bez zmian.
+
+### 3.2 Testy
+**Plik:** `tests/test_evaluator.cpp`
+- `test_common_parallel_shares_halve_time`: CGT na 2 identycznych proc. (t=20) → makespan 10, koszt 5,
+- `test_common_piece_waits_for_busy_proc`: zajęty procesor opóźnia tylko swój kawałek
+  (makespan 9; stary model dałby 14).
+
+### 3.3 Dokumentacja
+`ETG_GA_Design_v2.md` §2.4/§6.4/§6.5, `Input_format.md`, `ETG_concept.md`, komentarz w `src/etg.h`,
+`Gene_Functions_Explained.md` §4 (obserwacja „k>1 się nie opłaca" zastąpiona opisem nowego modelu).
+
+---
+
+## ETAP 2 — subtree crossover (§9.3) + schemat rozszerzony extended (§13)
+
+Zakres: wdrożenie decyzji z review PR #6. Evaluator (§6) nieruszany.
+
+### 2.1 Subtree crossover jako główny operator
+**Plik:** `src/ga.cpp` (`subtreeCrossover`, `inSubtree`)
+**Co:** dziecko = kopia rodzica A; losowany węzeł `r`; geny **całego poddrzewa zakorzenionego
+w `r`** (w drzewie rozpinającym, po `parent[]`) nadpisane z rodzica B. Używany w `runGa`
+(zamiast dotychczasowego uniform per węzeł) i w `runGaExtended`. 2 rodziców → 1 dziecko.
+**Dlaczego:** decyzja z review — „skopiuj tę samą część drzewa" ze slajdu = wymiana poddrzewa;
+kształt drzewa wspólny dla wszystkich osobników, więc operacja zawsze bezpieczna.
+
+### 2.2 Rozszerzony schemat ewolucyjny — extended (§13)
+**Pliki:** `src/ga.h`, `src/ga.cpp` (`runGaExtended` + pomocnicze)
+**Co:**
+- `POP = max(2, round(alpha · numTasks · tau))`, `tau` = `countPeTypes` (liczba różnych `typeFlag`),
+- frakcje rozłączne: `nCross = round(beta·POP)`, `nMut = round(gamma·POP)`,
+  `nClone = POP − nCross − nMut` (reszta wchłania zaokrąglenia; zawsze ≥ 1 — elita),
+- **rank selection liniowa**: `linearRankProbs` → `p(i) = (1/POP)(sp − (2sp−2)·i/(POP−1))`,
+  wspólna dla crossoveru, mutacji i klonowania,
+- **mutacja jako osobny kanał**: `mutateForce` (klon wybranego + pewna podmiana genu w losowym
+  węźle; PE albo CLS 50/50, redraw do skutku),
+- **dynamiczny stop**: brak poprawy best przez `noImproveLimit` pokoleń (+ bezpiecznik `maxGenerations`),
+- walidacja: `beta+gamma+delta = 1`, zakresy `(0,1)`, `alpha > 0`, `sp ∈ [1,2]`
+  (`validateExtendedParams`, rzuca `invalid_argument` → exit 1 w main).
+**Dlaczego:** §13 planu / slajd „Alpha, Beta, Gamma schema".
+
+### 2.3 CLI
+**Plik:** `src/main.cpp`
+**Co:** `--scheme basic|extended` (domyślnie basic — pełna kompatybilność wstecz),
+`--alpha --beta --gamma --delta --rank-pressure --no-improve --max-gen`; wypis parametrów
+schematu i powodu zatrzymania („stopped: no improvement").
+
+### 2.4 Testy
+**Plik:** `tests/test_ga.cpp` (+ wpis w `CMakeLists.txt`)
+**Co:** `countPeTypes` (1 vs 2 typy), własności `linearRankProbs` (suma=1, `p(0)=sp/POP`,
+monotoniczność), walidacja parametrów (zły `beta`, zły `sp` → wyjątek), determinizm
+`runGaExtended` dla stałego seeda + znalezienie jedynego dopuszczalnego harmonogramu (koszt 48),
+dynamiczny stop (dokładnie `noImproveLimit` pokoleń na instancji bez możliwej poprawy).
+
+### 2.5 Dokumentacja
+- `ETG_GA_Design_v2.md`: statusy §1/§9.3/§11/§13/§15 zaktualizowane na „zrealizowane".
+- **`Gene_Functions_Explained.md` (nowy):** wyjaśnienie działania wszystkich genów PE/CLS
+  z mapą kodu, szczegółowo dla CDT/CGT (wybór podzbioru, model 1/k, komunikacja data/k)
+  + **istotna obserwacja**: przy udokumentowanym modelu `czas = Σ t/k` (średnia) podzbiór
+  `k > 1` nigdy nie wygrywa z najlepszym singlem — pytanie o semantykę do prowadzącego.
+
+---
+
+## ETAP 1 — zgodność ze specyfikacją + pierwszy test
+
 Zakres: naprawa niezgodności implementacji z `ETG_GA_Design_v2.md` + pierwszy test nowego solvera.
 Bez zmian w evaluatorze poza wymienionymi. Nie ruszano parsera ani starego `gp_tree`.
 

@@ -95,6 +95,33 @@ solver::EvalParams evalParams(int tmax) {
     return p;
 }
 
+// Single CGT task, two identical universal processors (t=20, c=5 each).
+// Parallel 1/k shares: running on both must halve the time at equal cost.
+etg::ETG makeParallelCommon() {
+    etg::ETG g;
+    g.numTasks = 1;
+    g.numProcs = 2;
+    g.tasks = { task(0, etg::Category::CGT, {}) };
+    g.procs = { proc(0, 0, 1), proc(1, 0, 1) };
+    g.times = { {20, 20} };
+    g.costs = { {5, 5} };
+    return g;
+}
+
+// T0 (GT, sentinel-forced onto P0, t=4) plus an independent CGT T1 allowed on
+// both universal processors (t=10 each). With per-processor piece starts the
+// piece on P0 waits for T0, the piece on P1 starts immediately.
+etg::ETG makeStaggeredCommon() {
+    etg::ETG g;
+    g.numTasks = 2;
+    g.numProcs = 2;
+    g.tasks = { task(0, etg::Category::GT, {}), task(1, etg::Category::CGT, {}) };
+    g.procs = { proc(0, 0, 1), proc(1, 0, 1) };
+    g.times = { {4, -1}, {10, 10} };
+    g.costs = { {2, -1}, {3, 3} };
+    return g;
+}
+
 } // namespace
 
 TEST(test_chain_cost_and_makespan) {
@@ -190,6 +217,38 @@ TEST(test_evaluation_is_deterministic) {
     ASSERT_NEAR(a.schedule.makespan, b.schedule.makespan, 1e-9);
 }
 
+TEST(test_common_parallel_shares_halve_time) {
+    etg::ETG g = makeParallelCommon();
+    etg::PreparedData pd = etg::prepare(g);
+    solver::SpanningTree tree = solver::buildSpanningTree(pd);
+
+    solver::Individual ind = individual(1, solver::PeGene::Fastest, solver::ClsGene::ClsCheapest);
+    solver::evaluateIndividual(ind, g, pd, tree, evalParams(0));
+
+    // Fastest scores subsets by max share: {P0}=20, {P1}=20, {P0,P1}=max(10,10)=10.
+    ASSERT_TRUE(ind.schedule.valid);
+    ASSERT_EQ(static_cast<int>(ind.schedule.assignments[0].procIds.size()), 2);
+    ASSERT_NEAR(ind.schedule.makespan, 10.0, 1e-9);          // 20/2, in parallel
+    ASSERT_NEAR(ind.schedule.totalCost, 5.0, 1e-9);          // 5/2 + 5/2
+}
+
+TEST(test_common_piece_waits_for_busy_proc) {
+    etg::ETG g = makeStaggeredCommon();
+    etg::PreparedData pd = etg::prepare(g);
+    solver::SpanningTree tree = solver::buildSpanningTree(pd);
+
+    solver::Individual ind = individual(2, solver::PeGene::Fastest, solver::ClsGene::ClsCheapest);
+    solver::evaluateIndividual(ind, g, pd, tree, evalParams(0));
+
+    // T0 occupies P0 for 4. T1 runs on both (shares 5 each): the P1 piece
+    // starts immediately, the P0 piece waits for T0 -> finish max(5, 4+5)=9.
+    // Old sequential model would give 4 + (5+5) = 14.
+    ASSERT_TRUE(ind.schedule.valid);
+    ASSERT_EQ(static_cast<int>(ind.schedule.assignments[1].procIds.size()), 2);
+    ASSERT_NEAR(ind.schedule.makespan, 9.0, 1e-9);
+    ASSERT_NEAR(ind.schedule.totalCost, 5.0, 1e-9);          // 2 + (3/2 + 3/2)
+}
+
 TEST(test_ga_is_deterministic_for_fixed_seed) {
     etg::ETG g = makeCrossProcComm();
     etg::PreparedData pd = etg::prepare(g);
@@ -220,6 +279,8 @@ int main() {
     RUN(test_cross_proc_communication);
     RUN(test_local_communication_is_free);
     RUN(test_tmax_penalty);
+    RUN(test_common_parallel_shares_halve_time);
+    RUN(test_common_piece_waits_for_busy_proc);
     RUN(test_evaluation_is_deterministic);
     RUN(test_ga_is_deterministic_for_fixed_seed);
     std::cout << "All tests passed.\n";

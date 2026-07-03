@@ -11,13 +11,13 @@
 >   (obecnie `genes.cpp` losuje uniform); to zadanie implementacyjne, nie punkt otwarty,
 > - **jawna decyzja projektowa**: drzewo rozpinające jest **stałe i deterministyczne**, ewoluują tylko
 >   geny w węzłach (§3.3),
-> - **nowa §13 — Rozszerzenie**: pełny opis schematu ewolucyjnego z wykładu (**α/β/γ/δ**, **rank selection**,
->   **dynamiczny warunek stopu**) wraz z instrukcją, **jak rozwinąć obecny kod**, żeby dało się to łatwo
->   dołożyć bez ruszania evaluatora,
+> - **nowa §13 — wariant rozszerzony (extended)**: pełny opis rozszerzonego schematu ewolucyjnego
+>   (**α/β/γ/δ**, **rank selection**, **dynamiczny warunek stopu**) wraz z instrukcją,
+>   **jak rozwinąć obecny kod**, żeby dało się to łatwo dołożyć bez ruszania evaluatora,
 > - pozycje **otwarte (§14)** pozostają otwarte, ale mają teraz dokładny opis.
 >
 > **Status:** specyfikacja bazowa zamknięta i zaimplementowana; warstwa ewolucyjna ma dwa warianty —
-> **bazowy** (§9, zaimplementowany) i **docelowy wg wykładu** (§13, do implementacji).
+> **bazowy** (§9) i **rozszerzony — extended** (§13); oba zaimplementowane, przełączane `--scheme`.
 > **Nie dotyczy** starszego planu z `CGP_Algorithm_Plan.md` (reguła priorytetu + drzewo wyrażeń GP).
 
 ---
@@ -43,9 +43,10 @@
 | **Metoda** | algorytm genetyczny z genotypem w postaci **drzewa rozpinającego graf zadań** |
 
 Parser i walidacja ETG są gotowe (`src/etg.cpp`, `src/etg_prep.cpp`).
-**Solver GA (wariant bazowy) jest zaimplementowany** (`src/genes.*`, `src/spanning_tree.*`,
-`src/evaluator.*`, `src/ga.*`, `src/main.cpp`). Do domknięcia zostały:
-wpięcie wag genów (§4.3), warstwa ewolucyjna wg wykładu (§13) oraz punkty otwarte (§14).
+**Solver GA jest zaimplementowany w całości** (`src/genes.*`, `src/spanning_tree.*`,
+`src/evaluator.*`, `src/ga.*`, `src/main.cpp`): wagi genów §4.3 wpięte, subtree crossover §9.3,
+oba warianty warstwy ewolucyjnej — bazowy (§9) i rozszerzony (§13, `runGaExtended`) — przełączane
+flagą `--scheme basic|extended`. Otwarte pozostają tylko punkty §14.
 
 ---
 
@@ -78,14 +79,22 @@ Dozwolone procesory dla zadania `t`: `PreparedData::allowed[t]` (kategoria + sen
 
 ### 2.4 Zadania common (CDT / CGT)
 
-Dla zbioru procesorów `S`, `k = |S|`:
+Dla zbioru procesorów `S`, `k = |S|` — każdy procesor robi udział `1/k`, a udziały liczą się
+**RÓWNOLEGLE** (dowolne `k ≥ 1`, nie tylko 2):
 
 ```
-czas_zadania  = Σ (times[t][p] / k)  dla p ∈ S
-koszt_zadania = Σ (costs[t][p] / k)  dla p ∈ S
+czas_zadania  = max (times[t][p] / k)  dla p ∈ S   // koniec = najwolniejszy kawałek
+koszt_zadania = Σ   (costs[t][p] / k)  dla p ∈ S
 ```
 
-Komunikacja **z** common task: każdy z `k` procesorów wysyła **`data/k`** po każdej krawędzi wychodzącej z `data > 0`.
+Każdy procesor zaczyna swój kawałek, gdy **sam jest wolny** i dane wejściowe są gotowe
+(starty kawałków mogą być różne — zajęty procesor opóźnia tylko swój kawałek);
+zadanie kończy się, gdy skończy **ostatni** kawałek.
+
+Komunikacja **z** common task: wysyłka rusza dopiero **po zakończeniu całego zadania**
+(wszystkie kawałki gotowe) — każdy z `k` procesorów wysyła **`data/k`** po każdej krawędzi
+wychodzącej z `data > 0`, a **potomek startuje dopiero z kompletem danych** (max po wszystkich
+transferach).
 
 ### 2.5 Komunikacja (`@comm`)
 
@@ -317,7 +326,7 @@ Zadania planowane w **`PreparedData::topo`** (porządek topologiczny **całego D
 
 1. Niech `C ⊆ allowed[t]` to procesory dostępne.
 2. Dla każdego **niepustego** podzbioru `S ⊆ C` (spełniającego ograniczenia dostępności):
-   - policz `time(S)`, `cost(S)` wg modelu `1/k`,
+   - policz `time(S) = max` udział, `cost(S) = Σ` udziałów wg modelu `1/k` (§2.4),
    - oceń wg **kryterium aktywnego genu** (`PeGene[t]`):
      - `Cheapest` / `AllocCheapest` → min koszt,
      - `Fastest` / `AllocFastest` → min czas,
@@ -332,9 +341,16 @@ Zadania planowane w **`PreparedData::topo`** (porządek topologiczny **całego D
 
 ```
 dataReady(t) = max po poprzednikach u: finish[u] + commDelay(u→t)
-start(t)     = max( dataReady(t), max_{p ∈ S} freeAt[p] )   // S = {p} lub zbiór dla common
-execTime(t)  = wg modelu (pojedynczy / common 1/k)
-finish(t)    = start(t) + execTime(t)
+
+pojedynczy procesor p (GT/DT/UT):
+  start(t)  = max( dataReady(t), freeAt[p] )
+  finish(t) = start(t) + times[t][p]
+
+common (S, k = |S|) — kawałki RÓWNOLEGLE, każdy procesor startuje osobno:
+  pieceStart(p)  = max( dataReady(t), freeAt[p] )
+  pieceFinish(p) = pieceStart(p) + times[t][p]/k
+  start(t)  = min_p  pieceStart(p)
+  finish(t) = max_p  pieceFinish(p)   // komplet wyników (i wysyłka danych) dopiero tutaj
 ```
 
 **Ten sam procesor co poprzednik / sekwencja na uniwersalnym:**
@@ -395,14 +411,14 @@ jeśli makespan > Tmax:   fitness = totalCost + λ · (makespan − Tmax)
 
 ## 9. Operatory genetyczne — wariant BAZOWY (zaimplementowany)
 
-> To jest wariant obecnie w `src/ga.cpp`. **Docelowy** schemat wg wykładu (α/β/γ/δ, rank selection,
-> dynamiczny stop) jest opisany w **§13** jako rozszerzenie tej warstwy — evaluator (§6) i geny (§4)
-> pozostają bez zmian.
+> To jest wariant w `src/ga.cpp` (`runGa`). Schemat **rozszerzony (extended)** — α/β/γ/δ, rank
+> selection, dynamiczny stop — jest opisany w **§13** jako rozszerzenie tej warstwy — evaluator (§6)
+> i geny (§4) pozostają bez zmian.
 
 ### 9.1 Inicjalizacja
 
 - `POP` osobników (parametr `--pop`, domyślnie 50).
-- Dla każdego `t`: losowy `PeGene[t]` i `ClsGene[t]` (**docelowo wg wag §4.3**; obecnie uniform).
+- Dla każdego `t`: losowy `PeGene[t]` i `ClsGene[t]` **wg wag §4.3** (zaimplementowane w `genes.cpp`).
 
 ### 9.2 Selekcja
 
@@ -419,8 +435,8 @@ jeśli makespan > Tmax:   fitness = totalCost + λ · (makespan − Tmax)
 - **Wariant pomocniczy (uniform per węzeł):** dla każdego `t` niezależnie weź `(PeGene, ClsGene)` od A
   lub B. Prostszy, ale nie zachowuje spójnych „bloków" decyzji wzdłuż gałęzi — używać tylko pomocniczo.
 
-> **Status:** obecny `ga.cpp` implementuje jeszcze wariant **uniform**. Zgodnie z decyzją z review
-> crossover **głównym** operatorem ma być **subtree crossover** — do podmiany przy najbliższej zmianie w kodzie.
+> **Status:** zrealizowane — `ga.cpp` implementuje **subtree crossover** jako główny operator
+> (funkcja `subtreeCrossover`, używana w `runGa` i `runGaExtended`).
 
 ### 9.4 Mutacja
 
@@ -455,7 +471,7 @@ for gen in 1..GENERATIONS:                 // wariant bazowy §9
 output best individual's schedule
 ```
 
-Wariant docelowy (§13) zamienia pętlę `for gen` na pętlę z **dynamicznym stopem** i konstrukcją
+Wariant rozszerzony (§13) zamienia pętlę `for gen` na pętlę z **dynamicznym stopem** i konstrukcją
 pokolenia wg frakcji **β/γ/δ**.
 
 ---
@@ -466,12 +482,12 @@ pokolenia wg frakcji **β/γ/δ**.
 |---|---|---|
 | `src/etg.h`, `src/etg.cpp` | model ETG, parser, walidacja | gotowe |
 | `src/etg_prep.h`, `src/etg_prep.cpp` | `allowed`, `preds`, `topo` | gotowe |
-| `src/genes.h`, `src/genes.cpp` | enumy `PeGene`/`ClsGene`, losowanie genów | jest; **wpiąć wagi §4.3** |
+| `src/genes.h`, `src/genes.cpp` | enumy `PeGene`/`ClsGene`, losowanie wg wag §4.3 | gotowe |
 | `src/spanning_tree.h`, `src/spanning_tree.cpp` | budowa drzewa rozpinającego | gotowe |
 | `src/schedule.h` | `Schedule`, `Individual` | gotowe |
-| `src/evaluator.h`, `src/evaluator.cpp` | PE/CLS + harmonogram + fitness | jest; **poprawić kierunek idle (§4.1)** |
-| `src/ga.h`, `src/ga.cpp` | populacja, selekcja, crossover, mutacja | jest (wariant bazowy §9); **crossover do zmiany na subtree §9.3** |
-| `src/main.cpp` | CLI, wczytanie, uruchomienie GA | gotowe |
+| `src/evaluator.h`, `src/evaluator.cpp` | PE/CLS + harmonogram + fitness | gotowe |
+| `src/ga.h`, `src/ga.cpp` | subtree crossover, wariant bazowy §9 + rozszerzony §13 (`runGaExtended`) | gotowe |
+| `src/main.cpp` | CLI obu schematów (`--scheme basic\|extended`), uruchomienie | gotowe |
 | `src/gp_tree.*`, `src/gp_ops.*` | stary plan (reguła priorytetu) — **poza tym designem** | archiwum |
 | `CGP_Algorithm_Plan.md` | stary plan zespołu — **nieaktualny** | archiwum |
 | `ETG_GA_Design.md` | specyfikacja v1 | zastąpiona przez v2 |
@@ -489,20 +505,25 @@ pokolenia wg frakcji **β/γ/δ**.
 | Task graph | ETG DAG |
 | Genotyp = drzewo | Drzewo rozpinające + geny PE/CLS per task |
 | Fenotyp | Harmonogram (`Schedule`) |
-| Rank selection | §13 (docelowo) |
+| Rank selection | §13 (wariant extended) |
 | α · n · (liczba typów PE) | rozmiar populacji (§13) |
 | β / γ / δ | frakcje: crossover / mutacja / klonowanie (§13) |
 
 ---
 
-## 13. Rozszerzenie: schemat ewolucyjny wg wykładu (α/β/γ/δ, rank selection, dynamiczny stop)
+## 13. Wariant rozszerzony (extended): schemat α/β/γ/δ, rank selection, dynamiczny stop
 
-> **Cel tej sekcji:** dołożyć warstwę ewolucyjną **dokładnie jak na wykładzie**, **nie ruszając**
-> evaluatora (§6), genów (§4) ani reprezentacji (§5). To „nakładka" na `ga.cpp` — dlatego bazowy
-> wariant (§9) i docelowy współistnieją i przełącza się je flagą CLI. Poniżej: definicje, wzory,
-> konkretny plan zmian w kodzie i pseudokod pętli.
+> **Cel tej sekcji:** rozszerzyć bazowy pomysł (§9) o pełny schemat ewolucyjny α/β/γ/δ,
+> **nie ruszając** evaluatora (§6), genów (§4) ani reprezentacji (§5). To „nakładka" na `ga.cpp` —
+> dlatego wariant bazowy i rozszerzony współistnieją i przełącza się je flagą CLI.
+> Poniżej: definicje, wzory, konkretny plan zmian w kodzie i pseudokod pętli.
+>
+> **Status: ZAIMPLEMENTOWANE** — `runGaExtended` w `src/ga.cpp` (+ `countPeTypes`,
+> `linearRankProbs`, `validateExtendedParams`, `mutateForce`), CLI w `main.cpp`
+> (`--scheme extended --alpha --beta --gamma --delta --rank-pressure --no-improve --max-gen`),
+> testy w `tests/test_ga.cpp`.
 
-### 13.1 Definicje z wykładu
+### 13.1 Definicje
 
 - **Rozmiar populacji (stała na całe uruchomienie):**
   ```
@@ -539,9 +560,9 @@ pokolenia wg frakcji **β/γ/δ**.
   `noImproveLimit` kolejnych pokoleń (parametr `K`). Dodatkowo twardy limit `maxGenerations`
   jako bezpiecznik. „Poprawa" = spadek best fitness o co najmniej `eps` (np. `1e-9`).
 
-### 13.2 Odwzorowanie: co zamienia co (bazowy → docelowy)
+### 13.2 Odwzorowanie: co zamienia co (bazowy → rozszerzony)
 
-| Wariant bazowy §9 (`ga.cpp` dziś) | Wariant docelowy §13 |
+| Wariant bazowy §9 (`runGa`) | Wariant rozszerzony §13 (`runGaExtended`) |
 |---|---|
 | `populationSize` stałe (CLI) | `POP = round(α·n·τ)` liczone z instancji |
 | tournament (k=3) | rank selection (liniowa, `sp`) |
@@ -555,12 +576,12 @@ oraz `evaluateIndividual` **zostają bez zmian** — zmienia się tylko **sposó
 
 ### 13.3 Plan zmian w kodzie (minimalny, bez ruszania evaluatora)
 
-1. **`GaParams` (w `ga.h`)** — dodać pola docelowe, zachować bazowe (przełącznik `useLectureScheme`):
+1. **`GaParams` (w `ga.h`)** — dodać pola rozszerzone, zachować bazowe (przełącznik `useExtendedScheme`):
    ```cpp
    struct GaParams {
-       bool   useLectureScheme = false;  // false = §9 (bazowy), true = §13
+       bool   useExtendedScheme = false;  // false = §9 (bazowy), true = §13
 
-       // --- schemat wg wykładu (§13) ---
+       // --- schemat rozszerzony (§13) ---
        double alpha = 1.0;      // POP = round(alpha * numTasks * numPeTypes)
        double beta  = 0.6;      // frakcja crossover
        double gamma = 0.3;      // frakcja mutacji,     (0,1)
@@ -592,7 +613,7 @@ oraz `evaluateIndividual` **zostają bez zmian** — zmienia się tylko **sposó
 4. **Walidacja parametrów** przy starcie: `abs(beta+gamma+delta - 1) < 1e-9`,
    `gamma∈(0,1)`, `delta∈(0,1)`, `alpha>0`, `rankPressure∈[1,2]`. Błąd → komunikat i exit 1.
 
-5. **Nowa pętla ewolucji** (`runGaLecture`, wybierana gdy `useLectureScheme`):
+5. **Nowa pętla ewolucji** (`runGaExtended`, wybierana gdy `useExtendedScheme`):
    ```
    POP = max(2, round(alpha * numTasks * countPeTypes(graph)))
    pop = initPopulation(POP)                 // geny wg wag §4.3
@@ -643,8 +664,8 @@ oraz `evaluateIndividual` **zostają bez zmian** — zmienia się tylko **sposó
    - `subtreeCrossover` = operator z §9.3 (wymiana genów całego poddrzewa; potomków `r` liczymy z `parent[]`).
 
 6. **`main.cpp` / CLI** — dodać flagi:
-   `--scheme lecture|basic`, `--alpha`, `--beta`, `--gamma`, `--delta`,
-   `--rank-pressure`, `--no-improve`, `--max-gen`. Router wybiera `runGa` albo `runGaLecture`.
+   `--scheme extended|basic`, `--alpha`, `--beta`, `--gamma`, `--delta`,
+   `--rank-pressure`, `--no-improve`, `--max-gen`. Router wybiera `runGa` albo `runGaExtended`.
 
 ### 13.4 Uwagi i pułapki
 
@@ -654,8 +675,8 @@ oraz `evaluateIndividual` **zostają bez zmian** — zmienia się tylko **sposó
 - **Małe `POP`**: dla malutkich instancji `α·n·τ` może dać < 2 — klampujemy do min. 2.
 - **Rank vs fitness z karą**: rank selection patrzy tylko na *porządek* fitness, więc kara za Tmax
   (§8) działa poprawnie także tutaj (osobniki łamiące Tmax lądują na gorszych rangach).
-- **Zgodność z wykładem**: `β+γ+δ=1`, `α` dowolne, `γ,δ∈(0,1)`, dynamiczny stop, rank selection —
-  wszystkie punkty ze slajdu „Alpha, Beta, Gamma schema" są tu odwzorowane.
+- **Kompletność schematu**: `β+γ+δ=1`, `α` dowolne, `γ,δ∈(0,1)`, dynamiczny stop, rank selection —
+  wszystkie punkty schematu „Alpha, Beta, Gamma" są tu odwzorowane.
 
 ---
 
@@ -688,11 +709,11 @@ Najpierw **decyzje** (były otwarte, teraz zamknięte — cytaty poglądowe), po
 Implementuj / rozwijaj solver GA dla ETG według ETG_GA_Design_v2.md:
 - genotyp: SpanningTree (deterministyczne, STAŁE) + PeGene/ClsGene per taskId
 - evaluator: topo order, model common 1/k, CLS na odbiorcy, fitness cost + Tmax  [gotowe]
-- geny: wpiąć wagi §4.3 do genes.cpp (discrete_distribution), poprawić kierunek idle §4.1
+- geny: wagi §4.3 w genes.cpp (discrete_distribution), kierunek idle §4.1  [gotowe]
 - warstwa ewolucyjna:
-    - bazowa (§9): tournament + Pc/Pm + elityzm  [gotowe]
-    - docelowa (§13): POP = round(alpha*n*tau), rank selection, frakcje beta/gamma/delta (=1),
-      klonowanie, dynamiczny stop (noImproveLimit) — dodać runGaLecture + flagi CLI, NIE ruszać evaluatora
+    - bazowa (§9): tournament + Pc/Pm + elityzm + subtree crossover  [gotowe]
+    - rozszerzona (§13): POP = round(alpha*n*tau), rank selection, frakcje beta/gamma/delta (=1),
+      klonowanie, dynamiczny stop (noImproveLimit) — runGaExtended + flagi CLI  [gotowe]
 - nie używaj gp_tree / reguły priorytetu
 - parser i prepare() już istnieją
 ```

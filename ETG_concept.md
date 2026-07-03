@@ -59,22 +59,26 @@ genetic algorithm), and there is **no upper limit** on `k` (beyond the number
 of resources the category and sentinels allow).
 
 When a common task `t` runs on a set `S` of `k` resources, each chosen
-resource performs a `1/k` share of the work:
+resource performs a `1/k` share of the work and the shares run **in
+parallel** (each resource starts its share as soon as it is free and the
+input data is ready — a busy resource delays only its own piece):
 
-- **total time** = sum over `p ∈ S` of `times[t][p] / k`
+- **total time** = max over `p ∈ S` of `times[t][p] / k`
+  (the task ends when the slowest share ends)
 - **total cost** = sum over `p ∈ S` of `costs[t][p] / k`
 
-Because the resources may differ (each has its own row entry), the optimizer
-can pick faster/cheaper resources for the shares, so the totals can shrink
-slightly relative to running the whole task on a single resource. For `k = 1`
-both formulas reduce to the ordinary case.
+With `k` identical resources the task runs about `k`× faster at the same
+total cost, so splitting a common task genuinely pays off time-wise.
+For `k = 1` both formulas reduce to the ordinary case.
 
 ### Communication out of a common task
 
 A common task produces its result in `k` pieces — one per participating
-resource. For every outgoing edge that carries `data` units, the data is
-split too: **each of the `k` resources sends its own `data / k` piece** to the
-resource(s) running the dependent task.
+resource — and the result is complete only when the WHOLE task finishes
+(all shares done). Only then, for every outgoing edge that carries `data`
+units, **each of the `k` resources sends its own `data / k` piece** to the
+resource(s) running the dependent task; the dependent task may start only
+once it has received ALL pieces.
 
 Transferring a `data / k` piece over a channel of bandwidth `b` takes
 `ceil((data / k) / b)` time units. The per-(channel, resource) connection cost

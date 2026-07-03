@@ -64,12 +64,16 @@ double procExecCost(const etg::ETG& graph, int taskId, int procId, const EvalSta
     return c;
 }
 
+// Parallel 1/k shares: the task ends when the slowest share ends.
 double commonExecTime(const etg::ETG& graph, int taskId, const std::vector<int>& procs) {
     int k = static_cast<int>(procs.size());
-    double sum = 0.0;
-    for (int p : procs)
-        sum += static_cast<double>(graph.times[taskId][p]) / static_cast<double>(k);
-    return sum;
+    double longest = 0.0;
+    for (int p : procs) {
+        double share = static_cast<double>(graph.times[taskId][p]) / static_cast<double>(k);
+        if (share > longest)
+            longest = share;
+    }
+    return longest;
 }
 
 double commonExecCost(const etg::ETG& graph, int taskId, const std::vector<int>& procs,
@@ -266,18 +270,21 @@ double procReadyTime(const EvalState& st, const std::vector<int>& procs) {
     return ready;
 }
 
+void markProcUsed(const etg::ETG& graph, EvalState& st, int p, double finishTime) {
+    st.usedProcs[p] = true;
+    st.peUseCount[p] += 1;
+    st.lastFinish[p] = finishTime;
+    if (graph.procs[p].isUniversal())
+        st.freeAt[p] = finishTime;
+    else
+        st.burnedSpec[p] = true;
+}
+
 void markProcsUsed(const etg::ETG& graph, EvalState& st, const std::vector<int>& procs,
                    double finishTime)
 {
-    for (int p : procs) {
-        st.usedProcs[p] = true;
-        st.peUseCount[p] += 1;
-        st.lastFinish[p] = finishTime;
-        if (graph.procs[p].isUniversal())
-            st.freeAt[p] = finishTime;
-        else
-            st.burnedSpec[p] = true;
-    }
+    for (int p : procs)
+        markProcUsed(graph, st, p, finishTime);
 }
 
 bool pickSameAsPred(
@@ -522,31 +529,50 @@ void evaluateIndividual(
             graph, prep, st, taskId, procs, ind.clsGenes[taskId]);
         double commForTask = st.commCost - commBefore;
 
-        double procReady = procReadyTime(st, procs);
-        double start = dataReady;
-        if (procReady > start)
-            start = procReady;
-
-        double execTime = 0.0;
-        double execCost = 0.0;
-
-        if (graph.tasks[taskId].isCommon()) {
-            execTime = commonExecTime(graph, taskId, procs);
-            execCost = commonExecCost(graph, taskId, procs, st);
-        } else {
-            execTime = static_cast<double>(graph.times[taskId][procs[0]]);
-            execCost = procExecCost(graph, taskId, procs[0], st);
-        }
-
         TaskAssignment assign;
         assign.taskId = taskId;
         assign.procIds = procs;
-        assign.startTime = start;
-        assign.finishTime = start + execTime;
-        assign.cost = execCost + commForTask;
+
+        if (graph.tasks[taskId].isCommon()) {
+            // Each processor computes its 1/k share in parallel, starting as
+            // soon as it is free and the data is ready; the task (and its
+            // output data) completes when the slowest share finishes.
+            double execCost = commonExecCost(graph, taskId, procs, st);
+            int k = static_cast<int>(procs.size());
+            double firstStart = -1.0;
+            double lastPieceFinish = 0.0;
+
+            for (int p : procs) {
+                double pieceStart = dataReady;
+                if (st.freeAt[p] > pieceStart)
+                    pieceStart = st.freeAt[p];
+                double share = static_cast<double>(graph.times[taskId][p])
+                               / static_cast<double>(k);
+                double pieceFinish = pieceStart + share;
+                if (firstStart < 0.0 || pieceStart < firstStart)
+                    firstStart = pieceStart;
+                if (pieceFinish > lastPieceFinish)
+                    lastPieceFinish = pieceFinish;
+                markProcUsed(graph, st, p, pieceFinish);
+            }
+
+            assign.startTime = firstStart;
+            assign.finishTime = lastPieceFinish;
+            assign.cost = execCost + commForTask;
+        } else {
+            double execCost = procExecCost(graph, taskId, procs[0], st);
+            double start = dataReady;
+            double procReady = procReadyTime(st, procs);
+            if (procReady > start)
+                start = procReady;
+
+            assign.startTime = start;
+            assign.finishTime = start + static_cast<double>(graph.times[taskId][procs[0]]);
+            assign.cost = execCost + commForTask;
+            markProcsUsed(graph, st, procs, assign.finishTime);
+        }
 
         st.assignments[taskId] = assign;
-        markProcsUsed(graph, st, procs, assign.finishTime);
     }
 
     ind.schedule.assignments = st.assignments;

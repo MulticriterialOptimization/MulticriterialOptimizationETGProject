@@ -36,19 +36,20 @@ struct Edge {
 // the category; k is part of the solution, not of the instance.
 //
 // Cost/time model for a common task run on a set S of k resources (k = |S|):
-//   - each chosen resource pi does a 1/k share of the task, so it spends
-//     time[task][pi] / k time and cost[task][pi] / k cost;
-//   - the task's total time  = sum over pi in S of ( time[task][pi] / k );
+//   - each chosen resource pi does a 1/k share of the task IN PARALLEL,
+//     starting as soon as that resource is free and the input data is ready;
+//   - the task's total time  = max over pi in S of ( time[task][pi] / k )
+//     (the task ends when the slowest share ends);
 //   - the task's total cost  = sum over pi in S of ( cost[task][pi] / k ).
-//   Because the resources may differ, picking faster/cheaper resources for
-//   the share lets the total time/cost shrink slightly relative to a single
-//   resource. (For a non-common task, k = 1 and both formulas collapse to
+//   With k identical resources the task runs about k x faster at the same
+//   total cost. (For a non-common task, k = 1 and both formulas collapse to
 //   the plain matrix entry.)
 //
 // Communication out of a common task: the result is produced in k pieces,
-// one per participating resource. For every outgoing edge carrying `data`
-// units, each of the k resources sends its own data / k piece to the
-// resource(s) running the dependent task (see Input_format.md, @comm).
+// one per participating resource, and is complete only when the WHOLE task
+// finishes (all shares done). Only then, for every outgoing edge carrying
+// `data` units, each of the k resources sends its own data / k piece; the
+// dependent task may start once it has ALL pieces (see Input_format.md).
 //
 // Independently of the category, a sentinel value < 0 in @times/@cost marks
 // a FORBIDDEN assignment of that task to that resource (used e.g. for the
