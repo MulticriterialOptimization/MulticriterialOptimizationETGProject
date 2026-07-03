@@ -30,9 +30,7 @@ bool inSubtree(const SpanningTree& tree, int node, int root) {
     return false;
 }
 
-// Subtree crossover (§9.3): child = copy of A, genes of the whole subtree
-// rooted at a random node are taken from B. The tree shape is shared by all
-// individuals, so the operation is always structurally safe.
+// Subtree crossover: copy genes from a random subtree of B into a copy of A
 Individual subtreeCrossover(const Individual& a, const Individual& b,
                             const SpanningTree& tree, std::mt19937& rng)
 {
@@ -57,7 +55,7 @@ Individual subtreeCrossover(const Individual& a, const Individual& b,
 }
 
 // The mutant count is fixed by gamma, so the operator always replaces a gene
-// in one random node (never a no-op).
+// in one random node (never a no-op)
 void mutateForce(Individual& ind, std::mt19937& rng) {
     if (ind.peGenes.empty())
         return;
@@ -91,7 +89,7 @@ bool fitnessLess(const Individual& a, const Individual& b) {
     return a.fitness < b.fitness;
 }
 
-} // namespace
+}
 
 int countPeTypes(const etg::ETG& graph) {
     bool universal = false;
@@ -166,8 +164,8 @@ GaResult runGa(
     int noImprove = 0;
     const double eps = 1e-9;
 
-    // Disjoint generation fractions (§13.1); nClone absorbs rounding so the
-    // sum is always exactly popSize, and at least one clone (the elite) stays.
+    // nClone absorbs rounding
+    // at least one elite clone is always kept
     int nCross = static_cast<int>(std::lround(gaParams.beta * popSize));
     int nMut = static_cast<int>(std::lround(gaParams.gamma * popSize));
     int nClone = popSize - nCross - nMut;

@@ -12,9 +12,6 @@
 
 namespace solver {
 
-// Evolution scheme per ETG_GA_Design_v2.md §13: population sized from the
-// instance, disjoint generation fractions (beta+gamma+delta = 1), linear
-// rank selection and a dynamic stop condition.
 struct GaParams {
     double alpha = 1.0;          // POP = round(alpha * numTasks * numPeTypes)
     double beta  = 0.6;          // crossover fraction
@@ -32,13 +29,13 @@ struct GaResult {
     bool stoppedByNoImprove = false;
 };
 
-// Number of distinct processor types (typeFlag values) present in @proc.
+// Number of distinct processor types (typeFlag values) present in @proc
 int countPeTypes(const etg::ETG& graph);
 
-// Linear rank selection probabilities p(0..popSize-1), rank 0 = best.
+// Linear rank selection probabilities p(0..popSize-1), rank 0 = best
 std::vector<double> linearRankProbs(int popSize, double sp);
 
-// Throws std::invalid_argument if the GA parameters are invalid.
+// Throws std::invalid_argument if the GA parameters are invalid
 void validateGaParams(const GaParams& p);
 
 GaResult runGa(
