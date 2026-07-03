@@ -152,14 +152,18 @@ produced by the genetic algorithm, not part of the instance. There is no
 upper limit on `k` (beyond the number of allowed resources).
 
 When a common task `t` runs on a set `S` of `k` resources (`k = |S|`),
-each chosen resource does a `1/k` share of the work:
+each chosen resource does a `1/k` share of the work and the shares run
+**in parallel**:
 
-- **total time** = sum over `p ∈ S` of `times[t][p] / k`
+- **total time** = max over `p ∈ S` of `times[t][p] / k`
+  (each resource starts its share as soon as it is free and the input
+  data is ready — a busy resource delays only its own piece; the task
+  ends when the SLOWEST share ends)
 - **total cost** = sum over `p ∈ S` of `costs[t][p] / k`
 
-The resources in `S` may differ (each has its own row entry), so the
-optimizer can pick faster/cheaper resources for the shares and the totals
-can shrink slightly compared to running the whole task on one resource.
+The resources in `S` may differ (each has its own row entry). With `k`
+identical resources the task runs about `k`× faster at the same total
+cost, so splitting a common task genuinely pays off time-wise.
 For a non-common task `k = 1` and both formulas collapse to the plain
 matrix entry `times[t][p]` / `costs[t][p]`.
 
@@ -168,7 +172,9 @@ matrix entry `times[t][p]` / `costs[t][p]`.
 Because a common task produces its result in `k` pieces (one per
 participating resource), each outgoing edge carrying `data` units is also
 split: **each of the `k` resources sends its own `data / k` piece** to
-the resource(s) running the dependent task. A `data / k` piece sent over
+the resource(s) running the dependent task. Sending starts only after
+the WHOLE task finishes (all shares done), and the dependent task may
+start only once it has received ALL pieces. A `data / k` piece sent over
 a channel of bandwidth `b` takes `ceil((data / k) / b)` time units, and
 the per-(channel, resource) connection cost is paid for each resource
 that actually transfers a piece (see `@comm` below). Pieces that stay on

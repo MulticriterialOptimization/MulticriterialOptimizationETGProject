@@ -79,14 +79,22 @@ Dozwolone procesory dla zadania `t`: `PreparedData::allowed[t]` (kategoria + sen
 
 ### 2.4 Zadania common (CDT / CGT)
 
-Dla zbioru procesorów `S`, `k = |S|`:
+Dla zbioru procesorów `S`, `k = |S|` — każdy procesor robi udział `1/k`, a udziały liczą się
+**RÓWNOLEGLE** (dowolne `k ≥ 1`, nie tylko 2):
 
 ```
-czas_zadania  = Σ (times[t][p] / k)  dla p ∈ S
-koszt_zadania = Σ (costs[t][p] / k)  dla p ∈ S
+czas_zadania  = max (times[t][p] / k)  dla p ∈ S   // koniec = najwolniejszy kawałek
+koszt_zadania = Σ   (costs[t][p] / k)  dla p ∈ S
 ```
 
-Komunikacja **z** common task: każdy z `k` procesorów wysyła **`data/k`** po każdej krawędzi wychodzącej z `data > 0`.
+Każdy procesor zaczyna swój kawałek, gdy **sam jest wolny** i dane wejściowe są gotowe
+(starty kawałków mogą być różne — zajęty procesor opóźnia tylko swój kawałek);
+zadanie kończy się, gdy skończy **ostatni** kawałek.
+
+Komunikacja **z** common task: wysyłka rusza dopiero **po zakończeniu całego zadania**
+(wszystkie kawałki gotowe) — każdy z `k` procesorów wysyła **`data/k`** po każdej krawędzi
+wychodzącej z `data > 0`, a **potomek startuje dopiero z kompletem danych** (max po wszystkich
+transferach).
 
 ### 2.5 Komunikacja (`@comm`)
 
@@ -318,7 +326,7 @@ Zadania planowane w **`PreparedData::topo`** (porządek topologiczny **całego D
 
 1. Niech `C ⊆ allowed[t]` to procesory dostępne.
 2. Dla każdego **niepustego** podzbioru `S ⊆ C` (spełniającego ograniczenia dostępności):
-   - policz `time(S)`, `cost(S)` wg modelu `1/k`,
+   - policz `time(S) = max` udział, `cost(S) = Σ` udziałów wg modelu `1/k` (§2.4),
    - oceń wg **kryterium aktywnego genu** (`PeGene[t]`):
      - `Cheapest` / `AllocCheapest` → min koszt,
      - `Fastest` / `AllocFastest` → min czas,
@@ -333,9 +341,16 @@ Zadania planowane w **`PreparedData::topo`** (porządek topologiczny **całego D
 
 ```
 dataReady(t) = max po poprzednikach u: finish[u] + commDelay(u→t)
-start(t)     = max( dataReady(t), max_{p ∈ S} freeAt[p] )   // S = {p} lub zbiór dla common
-execTime(t)  = wg modelu (pojedynczy / common 1/k)
-finish(t)    = start(t) + execTime(t)
+
+pojedynczy procesor p (GT/DT/UT):
+  start(t)  = max( dataReady(t), freeAt[p] )
+  finish(t) = start(t) + times[t][p]
+
+common (S, k = |S|) — kawałki RÓWNOLEGLE, każdy procesor startuje osobno:
+  pieceStart(p)  = max( dataReady(t), freeAt[p] )
+  pieceFinish(p) = pieceStart(p) + times[t][p]/k
+  start(t)  = min_p  pieceStart(p)
+  finish(t) = max_p  pieceFinish(p)   // komplet wyników (i wysyłka danych) dopiero tutaj
 ```
 
 **Ten sam procesor co poprzednik / sekwencja na uniwersalnym:**

@@ -1,5 +1,38 @@
 # Poprawki solvera GA — dla review
 
+## ETAP 3 — równoległy model zadań common (CDT/CGT)
+
+Zakres: zmiana semantyki czasu zadań common z sekwencyjnej na równoległą (decyzja zespołu).
+
+### 3.1 Czas common = max udziałów (było: suma = wykonanie „po sobie")
+**Plik:** `src/evaluator.cpp` (`commonExecTime`, `evaluateIndividual`)
+**Co:**
+- `commonExecTime`: `Σ times[t][p]/k` → **`max times[t][p]/k`** (kawałki idą równolegle,
+  zadanie kończy najwolniejszy kawałek); używane też w scoringu podzbiorów (`scoreCommonSubset`),
+- harmonogramowanie per procesor (model B): `pieceStart(p) = max(dataReady, freeAt[p])`,
+  `pieceFinish(p) = pieceStart(p) + times[t][p]/k`; `start = min pieceStart`,
+  `finish = max pieceFinish`; zajęty procesor opóźnia tylko swój kawałek,
+- `markProcUsed` (nowy, per procesor): `freeAt[p] = pieceFinish(p)` — procesor, który skończył
+  swój kawałek wcześniej, wcześniej jest wolny,
+- komunikacja bez zmian w kodzie, ale semantyka potwierdzona: wysyłka `data/k` rusza po
+  zakończeniu **całego** zadania (`finishTime` = max kawałków), potomek startuje z kompletem
+  danych (max po wszystkich transferach). Działa dla dowolnego `k ≥ 1`.
+**Dlaczego:** stary wzór sumował udziały, czyli kawałki wykonywały się de facto sekwencyjnie —
+`k > 1` nigdy nie skracało czasu i sens CDT/CGT (równoległość) ginął. Po zmianie: 2 identyczne
+procesory → 2× szybciej za ten sam koszt; koszt (`Σ costs/k`) bez zmian.
+
+### 3.2 Testy
+**Plik:** `tests/test_evaluator.cpp`
+- `test_common_parallel_shares_halve_time`: CGT na 2 identycznych proc. (t=20) → makespan 10, koszt 5,
+- `test_common_piece_waits_for_busy_proc`: zajęty procesor opóźnia tylko swój kawałek
+  (makespan 9; stary model dałby 14).
+
+### 3.3 Dokumentacja
+`ETG_GA_Design_v2.md` §2.4/§6.4/§6.5, `Input_format.md`, `ETG_concept.md`, komentarz w `src/etg.h`,
+`Gene_Functions_Explained.md` §4 (obserwacja „k>1 się nie opłaca" zastąpiona opisem nowego modelu).
+
+---
+
 ## ETAP 2 — subtree crossover (§9.3) + schemat rozszerzony extended (§13)
 
 Zakres: wdrożenie decyzji z review PR #6. Evaluator (§6) nieruszany.

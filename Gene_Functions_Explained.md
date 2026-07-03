@@ -18,8 +18,9 @@ idzie po zadaniach w porządku topologicznym i dla każdego zadania `t`:
 2. stosuje regułę `PeGene[t]` → wybór procesora / zbioru procesorów (`pickProcs`);
 3. liczy czas gotowości danych od poprzedników, w razie potrzeby wybierając kanały
    regułą `ClsGene[t]` (`predecessorsReadyTime` → `pickChannel`);
-4. wyznacza `start = max(dane gotowe, procesory wolne)` i `finish = start + czas wykonania`;
-5. aktualizuje stan (`markProcsUsed`): liczniki użyć, `freeAt`, `lastFinish`, spalone wyspecjalizowane.
+4. wyznacza start i koniec: pojedyncze zadanie → `start = max(dane gotowe, procesor wolny)`,
+   `finish = start + czas`; common → każdy kawałek osobno, `finish = max` kawałków (patrz §4.2);
+5. aktualizuje stan (`markProcUsed`): liczniki użyć, `freeAt`, `lastFinish`, spalone wyspecjalizowane.
 
 ## 2. Geny PE — zadania pojedyncze (GT / DT / UT), funkcja `pickSingleProc`
 
@@ -59,53 +60,60 @@ podzbiór ocenia funkcją `scoreCommonSubset` według aktywnego genu:
 | Gen | Score podzbioru `S` (k = \|S\|) |
 |---|---|
 | `Cheapest`/`AllocCheapest` | `Σ costs[t][p]/k` + buyCosty nowych procesorów |
-| `Fastest`/`AllocFastest` | `Σ times[t][p]/k` |
+| `Fastest`/`AllocFastest` | `max times[t][p]/k` (najwolniejszy kawałek — kawałki idą równolegle) |
 | `MinTS` | czas(S) × koszt(S) |
 | `AllocLFU` | `Σ peUseCount[p]` po `S` |
 | `AllocIdle` | `min lastFinish[p]` po `S` |
 | `AllocSamePred` | reprezentant k=1: procesor rodzica (fallback `Cheapest`) |
 
 Wygrywa podzbiór z najmniejszym score. Model czasu/kosztu to `1/k` z dokumentacji
-(`commonExecTime`, `commonExecCost`): każdy z `k` procesorów robi 1/k pracy.
+(`commonExecTime`, `commonExecCost`): każdy z `k` procesorów robi 1/k pracy **równolegle**.
 
 ### 4.2 Czy równoległość jest brana pod uwagę? TAK — w tych miejscach:
 
-- **Start czeka na wszystkich.** `start(t) = max(dataReady, max freeAt[p] po p∈S)`
-  (`procReadyTime`) — zadanie common nie ruszy, dopóki *każdy* procesor z `S` nie będzie wolny.
-- **Wszyscy z S są zajęci do `finish`.** `markProcsUsed` ustawia `freeAt[p] = finish` dla
-  uniwersalnych i spala wyspecjalizowane — w trakcie zadania common żaden z jego procesorów
-  nie robi nic innego.
+- **Kawałki liczą się równolegle, każdy procesor startuje osobno.** W `evaluateIndividual`:
+  `pieceStart(p) = max(dataReady, freeAt[p])`, `pieceFinish(p) = pieceStart(p) + times[t][p]/k`.
+  Zajęty procesor opóźnia **tylko swój kawałek** — reszta liczy w tym czasie swoje.
+- **Koniec zadania = najwolniejszy kawałek.** `finish(t) = max_p pieceFinish(p)` — przykład:
+  a=10, b=20, k=2 → kawałki 5 i 10, oba wolne od zera → zadanie kończy się po **10** (nie 15).
+- **Każdy procesor zajęty tylko przez swój kawałek.** `markProcUsed` ustawia `freeAt[p] =
+  pieceFinish(p)` per procesor — kto skończył swój kawałek wcześniej, wcześniej jest wolny
+  do innych zadań (wyspecjalizowane są spalane).
 - **Uniwersalny = kolejka sekwencyjna.** Dwa zadania na tym samym uniwersalnym procesorze
   wykonują się po kolei (drugie czeka na `freeAt`), niezależnie od zależności w grafie.
 - **Zadania niezależne biegną równolegle „same z siebie".** Każdy procesor ma własny `freeAt`,
   więc T1 na P0 i T2 na P1 mogą się nakładać w czasie — makespan to `max finish`, nie suma.
-- **Komunikacja z common jest dzielona.** Wynik powstaje w `k` kawałkach: każdy procesor z `S`
-  wysyła `data/k` osobno (`predecessorsReadyTime`, `piece = data / kProd`); kawałek, który
-  zostaje na procesorze wykonującym następne zadanie, jest lokalny (za darmo, w zerowym czasie).
+- **Komunikacja z common jest dzielona i czeka na komplet.** Wynik powstaje w `k` kawałkach
+  i jest kompletny dopiero, gdy skończy się **całe zadanie** (`finish = max kawałków`) — dopiero
+  wtedy każdy procesor z `S` wysyła swoje `data/k` (`predecessorsReadyTime` używa `finishTime`
+  poprzednika), a **potomek startuje dopiero z kompletem danych** (max po wszystkich transferach).
+  Kawałek, który zostaje na procesorze wykonującym następne zadanie, jest lokalny (za darmo).
 
-### 4.3 WAŻNA obserwacja: przy obecnym modelu `k > 1` praktycznie nigdy nie wygrywa
+### 4.3 Model równoległy `max` udziałów — dlaczego `k > 1` się opłaca
 
-To trzeba rozumieć (i warto zapytać prowadzącego). Wzór z dokumentacji
-(`Input_format.md`) mówi: `czas(S) = Σ times[t][p]/k` — to jest **średnia arytmetyczna**
-czasów wybranych procesorów. A średnia nigdy nie jest mniejsza od najmniejszego elementu:
+Poprzednia wersja kodu liczyła `czas(S) = Σ times[t][p]/k` (suma udziałów = średnia) — czyli
+kawałki de facto wykonywały się „po sobie" i rozbicie na wiele procesorów nigdy nie skracało
+czasu. **Zespół zmienił model na równoległy** (decyzja projektowa, wdrożona w kodzie):
 
-- pula: P0 (t=30, c=3), P1 (t=15, c=2)
-- `{P1}`: czas 15, koszt 2
-- `{P0,P1}`: czas (30+15)/2 = **22.5**, koszt (3+2)/2 = **2.5**
+```
+czas(S) = max_p ( times[t][p] / k )      // koniec = najwolniejszy kawałek
+koszt(S) = Σ_p ( costs[t][p] / k )       // koszt bez zmian: suma udziałów
+```
 
-Czyli: `Fastest` wybierze `{P1}` (15 < 22.5), `Cheapest` wybierze `{P1}` (2 < 2.5).
-Dołożenie drugiego procesora **zawsze** pogarsza (lub wyrównuje) i czas, i koszt względem
-najlepszego singla — a buyCost nowych procesorów dodatkowo karze większe zbiory. Analogicznie
-LFU (suma rośnie z rozmiarem) i Idle (singleton z najbardziej bezczynnym procesorem remisuje
-z każdym nadzbiorem, a przy remisie wygrywa pierwszy w kolejności enumeracji, czyli mniejszy).
+Konsekwencje (przykłady):
 
-**Wniosek:** mechanizm wyboru podzbioru działa poprawnie względem udokumentowanego modelu,
-ale matematyczną konsekwencją modelu „suma udziałów = średnia" jest to, że optimum to zawsze
-`k = 1`. Zadania CDT/CGT *mogą* dostać wiele procesorów, ale się to nie opłaca.
-Gdyby intencja była taka, że praca dzieli się **równolegle w czasie**
-(czas = `max_p times[t][p]/k`, czyli realny speedup ~k×), to `k > 1` stawałoby się opłacalne
-i geny zaczęłyby faktycznie różnicować rozmiar zbioru. To pytanie o **semantykę modelu do
-prowadzącego**, nie bug kodu — kod wiernie realizuje `Input_format.md`.
+- **Identyczne procesory: realny speedup ~k×.** Dwa procesory t=20, c=5:
+  `{P0}`: czas 20, koszt 5; `{P0,P1}`: czas max(10,10) = **10**, koszt **5** —
+  dwa razy szybciej za tę samą cenę → `Fastest` faktycznie wybiera `k=2`.
+- **Różne procesory: wolniejszy ogranicza.** a=10, b=20, k=2 → kawałki 5 i 10 →
+  czas **10** (czekamy na wolniejszego), koszt = połowa a + połowa b.
+- **Koszt dalej faworyzuje singla.** `Σ costs/k` to średnia kosztów, więc czysto kosztowo
+  najtańszy pojedynczy procesor pozostaje optimum — `Cheapest` zwykle wybierze `k=1`.
+  To zdrowy trade-off: rozbijanie na wiele procesorów **kupuje czas** (ważne przy ciasnym
+  `Tmax`), a nie obniża kosztu.
+
+Dzięki temu geny naprawdę różnicują rozmiar zbioru: `Fastest`/`MinTS` potrafią wziąć duże `S`,
+`Cheapest` małe — i GA balansuje między nimi pod ograniczeniem `Tmax`.
 
 ## 5. Czego model NIE uwzględnia (świadome uproszczenia)
 
@@ -129,5 +137,5 @@ prowadzącego**, nie bug kodu — kod wiernie realizuje `Input_format.md`.
 | Czas/koszt common `1/k` | `commonExecTime`, `commonExecCost` |
 | Wybór kanału | `pickChannel` (gen odbiorcy) |
 | Podział danych z common | `predecessorsReadyTime` (`piece = data/kProd`) |
-| Kiedy zadanie startuje | `procReadyTime` + `max(dataReady, procReady)` w `evaluateIndividual` |
-| Zajętość procesorów | `markProcsUsed` (`freeAt`, `burnedSpec`) |
+| Kiedy zadanie startuje | pojedyncze: `max(dataReady, freeAt[p])`; common: per kawałek `pieceStart(p)` w `evaluateIndividual` |
+| Zajętość procesorów | `markProcUsed` / `markProcsUsed` (`freeAt`, `burnedSpec`) |
