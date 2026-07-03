@@ -8,9 +8,7 @@ add_library(etg_lib STATIC
     src/genes.cpp
     src/spanning_tree.cpp
     src/evaluator.cpp
-    src/ga.cpp
-    src/gp_tree.cpp
-    src/gp_ops.cpp)
+    src/ga.cpp)
 target_include_directories(etg_lib PUBLIC src/)
 
 add_executable(etg_solver src/main.cpp)
