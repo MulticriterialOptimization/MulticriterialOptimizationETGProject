@@ -176,10 +176,6 @@
   <ItemGroup>
     <None Include="input.txt" />
     <None Include="README.md" />
-    <None Include="tests\test_etg_prep.cpp" />
-    <None Include="tests\test_gp_tree.cpp" />
-    <None Include="tests\test_gp_ops.cpp" />
-    <None Include="tests\test_helpers.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

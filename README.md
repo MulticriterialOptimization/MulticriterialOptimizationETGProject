@@ -184,17 +184,18 @@ input_parallel.txt       # demo instance where a common task must be split (k = 
 ## How to build & run
 
 ```bash
+Use Visual Studio. Open project solution and Run Release version with configurable parameters.
 cmake -S . -B build
-cmake --build build
+cmake --build build --config Release
 
 # run on the sample instance with a time limit
-./build/etg_solver input.txt --tmax 40 --alpha 5 --no-improve 50
+build\Release\etg_solver.exe input.txt --tmax 40 --alpha 5 --no-improve 50
 
 # example: a tight Tmax forces a common task onto two resources in parallel
-./build/etg_solver input_parallel.txt --tmax 30 --alpha 10
+build\Release\etg_solver.exe input_parallel.txt --tmax 30 --alpha 10
 
 # no time limit = pure cost minimization
-./build/etg_solver input.txt
+build\Release\etg_solver.exe input.txt
 
 ```
 
