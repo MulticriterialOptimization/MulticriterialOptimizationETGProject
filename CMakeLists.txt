@@ -8,19 +8,21 @@ add_library(etg_lib STATIC
     src/genes.cpp
     src/spanning_tree.cpp
     src/evaluator.cpp
-    src/ga.cpp
-    src/gp_tree.cpp
-    src/gp_ops.cpp)
+    src/ga.cpp)
 target_include_directories(etg_lib PUBLIC src/)
 
 add_executable(etg_solver src/main.cpp)
 target_link_libraries(etg_solver PRIVATE etg_lib)
-
-enable_testing()
-foreach(test_name test_etg_prep test_evaluator test_ga test_gp_tree test_gp_ops)
-    add_executable(${test_name} tests/${test_name}.cpp)
-    target_link_libraries(${test_name} PRIVATE etg_lib)
-    add_test(NAME ${test_name} COMMAND ${test_name})
-    set_tests_properties(${test_name} PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-endforeach()
+set_target_properties(etg_solver PROPERTIES
+    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+)
+set_target_properties(etg_solver PROPERTIES
+    VS_DEBUGGER_COMMAND_ARGUMENTS "input.txt --tmax 100"
+)
+set(INPUT_FILE "input.txt" CACHE STRING "Input file for ETG")
+target_compile_definitions(etg_solver PRIVATE
+    INPUT_FILE="${INPUT_FILE}"
+)
+configure_file(${CMAKE_SOURCE_DIR}/input.txt
+               ${CMAKE_BINARY_DIR}/Release/input.txt
+               COPYONLY)

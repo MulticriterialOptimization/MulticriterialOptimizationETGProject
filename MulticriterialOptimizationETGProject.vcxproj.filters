@@ -13,9 +13,6 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="Tests">
-      <UniqueIdentifier>{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp">
@@ -39,12 +36,6 @@
     <ClCompile Include="src\ga.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\gp_tree.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\gp_ops.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\etg.h">
@@ -65,12 +56,6 @@
     <ClInclude Include="src\ga.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\gp_tree.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\gp_ops.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\schedule.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -78,17 +63,5 @@
   <ItemGroup>
     <None Include="input.txt" />
     <None Include="README.md" />
-    <None Include="tests\test_helpers.h">
-      <Filter>Tests</Filter>
-    </None>
-    <None Include="tests\test_etg_prep.cpp">
-      <Filter>Tests</Filter>
-    </None>
-    <None Include="tests\test_gp_tree.cpp">
-      <Filter>Tests</Filter>
-    </None>
-    <None Include="tests\test_gp_ops.cpp">
-      <Filter>Tests</Filter>
-    </None>
   </ItemGroup>
 </Project>
