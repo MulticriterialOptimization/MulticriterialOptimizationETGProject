@@ -291,7 +291,6 @@ struct Individual {
 ```
 
 Ta reprezentacja jest już w `src/genes.h` / `src/schedule.h` / `src/spanning_tree.h`.
-Istniejący `gp_tree` (reguła priorytetu) **nie jest** częścią tego podejścia — może zostać w repo (testy).
 
 ---
 
@@ -487,7 +486,6 @@ Szczegóły pętli (frakcje, rank selection, dynamiczny stop): pseudokod w §13.
 | `src/evaluator.h`, `src/evaluator.cpp` | PE/CLS + harmonogram + fitness | gotowe |
 | `src/ga.h`, `src/ga.cpp` | subtree crossover + schemat rozszerzony §13 (`runGa`) — jedyna wersja | gotowe |
 | `src/main.cpp` | CLI (`--alpha --beta --gamma --delta --rank-pressure --no-improve --max-gen`), uruchomienie | gotowe |
-| `src/gp_tree.*`, `src/gp_ops.*` | stary plan (reguła priorytetu) — **poza tym designem** | archiwum |
 | `CGP_Algorithm_Plan.md` | stary plan zespołu — **nieaktualny** | archiwum |
 | `ETG_GA_Design.md` | specyfikacja v1 | zastąpiona przez v2 |
 | **`ETG_GA_Design_v2.md`** | **ten dokument — aktualna specyfikacja** | — |
@@ -702,7 +700,6 @@ Implementuj / rozwijaj solver GA dla ETG według ETG_GA_Design_v2.md:
   dynamiczny stop (noImproveLimit) — runGa + flagi CLI  [gotowe]
 - zadania common (CDT/CGT): kawałki 1/k RÓWNOLEGLE, czas = max udziałów, per-procesor start,
   wysyłka danych po komplecie (§2.4, §6.5)  [gotowe]
-- nie używaj gp_tree / reguły priorytetu
 - parser i prepare() już istnieją
 ```
 

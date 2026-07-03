@@ -80,8 +80,10 @@ struct Task {
 //   raw[0] - one-time purchase/activation cost, paid once iff the resource
 //            executes at least one task,
 //   raw[1] - reserved/unknown (always 0 in the available instances),
-//   raw[2] - type flag: 1 = universal (may execute many tasks sequentially),
-//            0 = specialized (executes exactly ONE task, per the ETG spec).
+//   raw[2] - type flag: 1 = universal, 0 = specialized. Both kinds run their
+//            tasks sequentially (one at a time) and are reusable; specialized
+//            resources are only pricier/faster and are the only ones allowed to
+//            run DT/CDT tasks. There is no one-time-use limit.
 struct Processor {
     int id = -1;
     std::vector<int> raw;

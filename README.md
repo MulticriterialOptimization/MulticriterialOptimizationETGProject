@@ -140,8 +140,11 @@ and applying each task's genes to the state built so far.
 * The program reads **any** valid ETG: any number of tasks/resources/channels, sections in
   any order, categories encoded in the task-id prefix (a bare `T0` is accepted as `GT` for
   legacy files), `@comm` optional.
-* A **specialized** resource executes **exactly one task ever**; a **universal** resource
-  executes tasks **sequentially** (a busy resource delays the next task assigned to it).
+* **Every resource is reusable and runs its tasks sequentially** (one at a time - a busy
+  resource delays the next task assigned to it, tracked by `freeAt`). The two kinds differ
+  only in **cost/speed** and in **which tasks may use them**: specialized resources are
+  pricier/faster and are the **only** ones allowed to run `DT` / `CDT` tasks (universal
+  resources cannot); `GT` tasks may run on either kind. There is **no** one-time-use limit.
 * **Communication**: the channel-selection rule belongs to the **receiver** (`clsGenes[t]`),
   applied per incoming data edge; both the **sender's and the receiver's** processor pay the
   channel `connectCost` when they are not yet connected to it (same processor = local, free).
@@ -172,9 +175,6 @@ src/ga.h / ga.cpp        # the genetic loop: rank selection, subtree crossover,
 input.txt                # sample ETG instance (10 tasks, 4 resources, 1 channel)
 input_parallel.txt       # demo instance where a common task must be split (k = 2)
 ```
-
-Legacy files `src/gp_tree.*`, `src/gp_ops.*` belong to an abandoned earlier approach
-(priority-rule GP) and are not part of the solution.
 
 ## Requirements
 

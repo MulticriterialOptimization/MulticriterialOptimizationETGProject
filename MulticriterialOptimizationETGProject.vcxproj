@@ -159,8 +159,6 @@
     <ClCompile Include="src\spanning_tree.cpp" />
     <ClCompile Include="src\evaluator.cpp" />
     <ClCompile Include="src\ga.cpp" />
-    <ClCompile Include="src\gp_tree.cpp" />
-    <ClCompile Include="src\gp_ops.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\etg.h" />
@@ -169,16 +167,12 @@
     <ClInclude Include="src\spanning_tree.h" />
     <ClInclude Include="src\evaluator.h" />
     <ClInclude Include="src\ga.h" />
-    <ClInclude Include="src\gp_tree.h" />
-    <ClInclude Include="src\gp_ops.h" />
     <ClInclude Include="src\schedule.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="input.txt" />
     <None Include="README.md" />
     <None Include="tests\test_etg_prep.cpp" />
-    <None Include="tests\test_gp_tree.cpp" />
-    <None Include="tests\test_gp_ops.cpp" />
     <None Include="tests\test_helpers.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

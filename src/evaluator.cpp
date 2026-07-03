@@ -20,7 +20,6 @@ struct EvalState {
     std::vector<double> lastFinish;
     std::vector<int> peUseCount;
     std::vector<bool> usedProcs;
-    std::vector<bool> burnedSpec;
     std::vector<std::vector<bool>> channelConnected;
     std::vector<int> channelUseCount;
     std::vector<double> channelLastFinish;
@@ -29,8 +28,9 @@ struct EvalState {
 };
 
 bool isProcAvailable(const etg::ETG& graph, int p, const EvalState& st) {
-    if (!graph.procs[p].isUniversal() && st.burnedSpec[p])
-        return false;
+    (void)graph;
+    (void)p;
+    (void)st;
     return true;
 }
 
@@ -271,13 +271,11 @@ double procReadyTime(const EvalState& st, const std::vector<int>& procs) {
 }
 
 void markProcUsed(const etg::ETG& graph, EvalState& st, int p, double finishTime) {
+    (void)graph;
     st.usedProcs[p] = true;
     st.peUseCount[p] += 1;
     st.lastFinish[p] = finishTime;
-    if (graph.procs[p].isUniversal())
-        st.freeAt[p] = finishTime;
-    else
-        st.burnedSpec[p] = true;
+    st.freeAt[p] = finishTime; // every resource runs its tasks sequentially
 }
 
 void markProcsUsed(const etg::ETG& graph, EvalState& st, const std::vector<int>& procs,
@@ -500,7 +498,6 @@ void evaluateIndividual(
     st.lastFinish.assign(graph.numProcs, 0.0);
     st.peUseCount.assign(graph.numProcs, 0);
     st.usedProcs.assign(graph.numProcs, false);
-    st.burnedSpec.assign(graph.numProcs, false);
     st.channelUseCount.assign(graph.channels.size(), 0);
     st.channelLastFinish.assign(graph.channels.size(), 0.0);
     st.assignments.assign(graph.numTasks, TaskAssignment());

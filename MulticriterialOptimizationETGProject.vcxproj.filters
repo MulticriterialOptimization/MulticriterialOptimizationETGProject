@@ -39,12 +39,6 @@
     <ClCompile Include="src\ga.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\gp_tree.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\gp_ops.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\etg.h">
@@ -65,12 +59,6 @@
     <ClInclude Include="src\ga.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\gp_tree.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\gp_ops.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\schedule.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -82,12 +70,6 @@
       <Filter>Tests</Filter>
     </None>
     <None Include="tests\test_etg_prep.cpp">
-      <Filter>Tests</Filter>
-    </None>
-    <None Include="tests\test_gp_tree.cpp">
-      <Filter>Tests</Filter>
-    </None>
-    <None Include="tests\test_gp_ops.cpp">
       <Filter>Tests</Filter>
     </None>
   </ItemGroup>
